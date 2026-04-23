@@ -141,30 +141,35 @@ class TestRealAPI(unittest.TestCase):
             except Exception as e:
                 self.fail(f"Conversation failed at turn {i+1}: {e}")
         
-        # Check if conversation completed
-        if last_result and last_result.is_complete:
-            # If completed with success, criteria should be valid EvaluationCriteria
-            if last_result.criteria:
-                self.assertIsInstance(last_result.criteria, EvaluationCriteria)
-                self.assertGreaterEqual(len(last_result.criteria.criteria), 2)
-                # Check for budget criterion (case-insensitive)
-                budget_found = any(
-                    "budget" in criterion.name.lower() 
-                    for criterion in last_result.criteria.criteria
-                )
-                self.assertTrue(
-                    budget_found,
-                    f"Criteria missing 'budget'. Found: {[c.name for c in last_result.criteria.criteria]}"
-                )
-                print(f"\n✓ Conversation completed successfully!")
-                print(f"  Generated {len(last_result.criteria.criteria)} criteria")
-            else:
-                # Completed with failure
-                print(f"\n✗ Conversation failed: {last_result.message}")
-        else:
-            # Conversation didn't complete within steps
-            print(f"\n⚠ Conversation did not complete within {len(conversation_steps)} steps")
-            print(f"  Last turn count: {orchestrator.turn_count}")
+        # The conversation should complete within the steps
+        self.assertTrue(
+            last_result is not None and last_result.is_complete,
+            f"Conversation did not complete within {len(conversation_steps)} steps. "
+            f"Last turn: {orchestrator.turn_count}, Complete: {last_result.is_complete if last_result else 'no result'}"
+        )
+        
+        # If completed, it should be with success (not failure)
+        self.assertIsNotNone(
+            last_result.criteria,
+            f"Conversation completed but with failure: {last_result.message}"
+        )
+        
+        # Criteria should be valid EvaluationCriteria
+        self.assertIsInstance(last_result.criteria, EvaluationCriteria)
+        self.assertGreaterEqual(len(last_result.criteria.criteria), 2)
+        
+        # Check for budget criterion (case-insensitive)
+        budget_found = any(
+            "budget" in criterion.name.lower() 
+            for criterion in last_result.criteria.criteria
+        )
+        self.assertTrue(
+            budget_found,
+            f"Criteria missing 'budget'. Found: {[c.name for c in last_result.criteria.criteria]}"
+        )
+        
+        print(f"\n✓ Conversation completed successfully!")
+        print(f"  Generated {len(last_result.criteria.criteria)} criteria")
         
         # The main test is that no validation errors occurred during the conversation
         # (If LLM returns stringified JSON, instructor would raise validation error)

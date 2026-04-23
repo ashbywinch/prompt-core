@@ -95,7 +95,8 @@ def get_client(provider: Optional[ProviderType] = None):
         raise ValueError(f"{config['error_msg']}")
     
     # Create litellm client with instructor patch
-    return instructor.from_litellm(completion)
+    # Use JSON mode for better compatibility with OpenRouter models
+    return instructor.from_litellm(completion, mode=instructor.Mode.JSON)
 
 
 def get_model_for_provider(provider: Optional[ProviderType] = None) -> str:
