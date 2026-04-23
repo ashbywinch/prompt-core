@@ -2,14 +2,9 @@
 
 A Python library for generating structured evaluation criteria using LLMs with instructor and Pydantic.
 
-## Features
+## Specification 
 
-- Generate structured `EvaluationCriteria` objects using LLMs
-- Each criterion includes name, description, weight (0-10), and optional ideal value
-- Built with `instructor` for structured outputs and `pydantic` for validation
-- Simple chat interface for discussing criteria with LLMs
-- CLI tool for easy usage
-- Export criteria to JSON
+See spec.md 
 
 ## Installation
 
@@ -21,36 +16,20 @@ git clone <repository-url>
 cd prompt-core
 
 # Install dependencies
-uv sync
+make
 
-# Copy environment template
-cp .env.example .env
-# Edit .env with your OpenAI API key
-```
-
-### Manual installation
-
-```bash
-pip install instructor openai pydantic python-dotenv typer
 ```
 
 ## Quick Start
 
 ### 1. Set up environment
 
-Create a `.env` file with your OpenAI API key:
-
-```bash
-# Copy the example file
-cp .env.example .env
-
-# Edit .env and add your API key(s)
-# OpenAI (default):
-OPENAI_API_KEY=your-api-key-here
+export OPENROUTER_API_KEY=your-openrouter-api-key-here
 
 # For free alternatives, you can also use:
-# GOOGLE_API_KEY=your-google-ai-key    # Google Gemini (recommended for free tier)
-# GROQ_API_KEY=your-groq-key           # Groq (fast, free tier available)
+# export OPENROUTER_API_KEY=your-openrouter-key  # OpenRouter (recommended for testing, no rate limits)
+# export GOOGLE_API_KEY=your-google-ai-key       # Google Gemini (free tier)
+# export GROQ_API_KEY=your-groq-key              # Groq (fast, free tier available)
 ```
 
 **Note**: You need at least one API key to run tests and use the library with real LLMs.
@@ -123,21 +102,25 @@ python tests/integration/test_real_api.py
 
 ### Getting API Keys
 
-**Recommended free options:**
-1. **Google Gemini**: [Get API key](https://makersuite.google.com/app/apikey) - Most generous free tier
-2. **Groq**: [Get API key](https://console.groq.com) - Fast, free tier available  
-3. **OpenAI**: [Get API key](https://platform.openai.com/api-keys) - $5 free credits for new users
+**Recommended free options for testing (avoids rate limits):**
+1. **OpenRouter**: [Get API key](https://openrouter.ai/keys) - Free router with no rate limits, ideal for testing
+2. **Google Gemini**: [Get API key](https://makersuite.google.com/app/apikey) - Most generous free tier
+3. **Groq**: [Get API key](https://console.groq.com) - Fast, free tier available  
+4. **OpenAI**: [Get API key](https://platform.openai.com/api-keys) - $5 free credits for new users
 
 Add your API key to `.env`:
 ```bash
-# For Google Gemini (recommended)
+# For OpenRouter (recommended for testing - no rate limits)
+OPENROUTER_API_KEY=your-openrouter-api-key
+
+# For Google Gemini
 GOOGLE_API_KEY=your-google-api-key
 
 # For OpenAI
 OPENAI_API_KEY=your-openai-api-key
 
 # Optional: Specify which provider to use
-LLM_PROVIDER=google  # or "openai", "groq"
+LLM_PROVIDER=openrouter  # or "google", "openai", "groq"
 ```
 
 See [TESTING.md](TESTING.md) for detailed testing strategy.

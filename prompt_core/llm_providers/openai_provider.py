@@ -54,7 +54,7 @@ class OpenAIProvider(LLMProvider):
             except ImportError:
                 raise ImportError(
                     "OpenAI Python SDK not installed. "
-                    "Install with: pip install openai"
+                    "Install with: uv add openai"
                 )
         return self._client
     

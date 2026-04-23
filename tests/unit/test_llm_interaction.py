@@ -19,45 +19,42 @@ import unittest
 from unittest.mock import Mock, patch, MagicMock
 
 from prompt_core.conversation import ConversationOrchestrator, ConversationAction
-from prompt_core.llm_provider import LLMProvider
 
 
-class MockProvider(LLMProvider):
-    """Mock provider for testing LLM interaction."""
+class MockInstructorClient:
+    """Mock instructor client for testing LLM interaction."""
     
     def __init__(self, responses=None):
         self.responses = responses or []
         self.call_count = 0
         self.last_call_args = None
         self.last_call_kwargs = None
+        self.chat = self.MockChatCompletions(self)
     
-    def create_structured_response(
-        self,
-        model: str,
-        messages: list,
-        response_model: type,
-        max_retries: int = 3,
-        **kwargs
-    ):
-        self.call_count += 1
-        self.last_call_args = (model, messages, response_model, max_retries)
-        self.last_call_kwargs = kwargs
-        
-        if self.responses:
-            # Use responses list if provided
-            if len(self.responses) > 0:
-                response = self.responses.pop(0)
-                if isinstance(response, Exception):
-                    raise response
-                return response
-            else:
-                raise ValueError("No more responses in mock provider")
-        
-        # Default mock response
-        return ConversationAction(
-            action="continue",
-            message="Test question"
-        )
+    class MockChatCompletions:
+        def __init__(self, parent):
+            self.parent = parent
+            self.completions = self  # Allows chaining: client.chat.completions.create()
+            
+        def create(self, model=None, messages=None, response_model=None, max_retries=None, **kwargs):
+            self.parent.call_count += 1
+            self.parent.last_call_args = (model, messages, response_model, max_retries)
+            self.parent.last_call_kwargs = kwargs
+            
+            if self.parent.responses:
+                if len(self.parent.responses) > 0:
+                    response = self.parent.responses.pop(0)
+                    if isinstance(response, Exception):
+                        raise response
+                    return response
+                else:
+                    raise ValueError("No more responses in mock")
+            
+            # Default mock response
+            return ConversationAction(
+                action="continue",
+                message="Test question"
+            )
 
 
 class TestLLMInteraction(unittest.TestCase):
@@ -65,7 +62,8 @@ class TestLLMInteraction(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.orchestrator = ConversationOrchestrator(model="gpt-4o-mini")
+        # Don't specify model - use default from configuration
+        self.orchestrator = ConversationOrchestrator()
     
     # =========================================================================
     # REAL API TESTS (require API keys - will FAIL without)
@@ -122,13 +120,13 @@ class TestLLMInteraction(unittest.TestCase):
     # that would be difficult to test with real API calls.
     # =========================================================================
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_with_validation_error(self, mock_get_provider):
-        """Test _call_llm when provider raises validation error."""
-        mock_provider = MockProvider()
-        mock_provider.responses = [ValueError("Validation failed after 3 retries")]
+    @patch('prompt_core.llm_interaction.get_client')
+    def test_call_llm_with_validation_error(self, mock_get_client):
+        """Test _call_llm when LLM raises validation error."""
+        mock_client = MockInstructorClient()
+        mock_client.responses = [ValueError("Validation failed after 3 retries")]
         
-        mock_get_provider.return_value = mock_provider
+        mock_get_client.return_value = mock_client
         
         # _call_llm should propagate the exception
         with self.assertRaises(ValueError) as context:
@@ -136,13 +134,13 @@ class TestLLMInteraction(unittest.TestCase):
         
         self.assertIn("Validation failed", str(context.exception))
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_with_api_error(self, mock_get_provider):
+    @patch('prompt_core.llm_interaction.get_client')
+    def test_call_llm_with_api_error(self, mock_get_client):
         """Test _call_llm when API call fails."""
-        mock_provider = MockProvider()
-        mock_provider.responses = [Exception("API error: Invalid API key")]
+        mock_client = MockInstructorClient()
+        mock_client.responses = [Exception("API error: Invalid API key")]
         
-        mock_get_provider.return_value = mock_provider
+        mock_get_client.return_value = mock_client
         
         # _call_llm should propagate the exception
         with self.assertRaises(Exception) as context:
@@ -150,17 +148,17 @@ class TestLLMInteraction(unittest.TestCase):
         
         self.assertIn("API error", str(context.exception))
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_passes_correct_parameters(self, mock_get_provider):
-        """Test that _call_llm passes correct parameters to provider."""
-        mock_provider = MockProvider()
+    @patch('prompt_core.llm_interaction.get_client')
+    def test_call_llm_passes_correct_parameters(self, mock_get_client):
+        """Test that _call_llm passes correct parameters to LLM."""
+        mock_client = MockInstructorClient()
         expected_action = ConversationAction(
             action="continue",
             message="Test"
         )
-        mock_provider.responses = [expected_action]
+        mock_client.responses = [expected_action]
         
-        mock_get_provider.return_value = mock_provider
+        mock_get_client.return_value = mock_client
         
         # Add some messages to test they're passed
         self.orchestrator.messages = [
@@ -171,36 +169,21 @@ class TestLLMInteraction(unittest.TestCase):
         action = self.orchestrator._call_llm()
         
         # Verify call parameters
-        self.assertEqual(mock_provider.call_count, 1)
-        model, messages, response_model, max_retries = mock_provider.last_call_args
+        self.assertEqual(mock_client.call_count, 1)
+        model, messages, response_model, max_retries = mock_client.last_call_args
         
-        self.assertEqual(model, "gpt-4o-mini")
+        # Model should come from configuration
+        from prompt_core.config import config
+        expected_model = config.model
+        self.assertEqual(model, expected_model)
         self.assertEqual(messages, self.orchestrator.messages)
         self.assertEqual(response_model, ConversationAction)
         self.assertEqual(max_retries, 3)
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_with_different_model(self, mock_get_provider):
-        """Test _call_llm uses orchestrator's model setting."""
-        # Create orchestrator with different model
-        orchestrator = ConversationOrchestrator(model="gpt-4")
-        
-        mock_provider = MockProvider()
-        expected_action = ConversationAction(
-            action="continue",
-            message="Test"
-        )
-        mock_provider.responses = [expected_action]
-        mock_get_provider.return_value = mock_provider
-        
-        orchestrator._call_llm()
-        
-        # Verify model parameter
-        model, _, _, _ = mock_provider.last_call_args
-        self.assertEqual(model, "gpt-4")
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_with_max_retries(self, mock_get_provider):
+    
+    @patch('prompt_core.llm_interaction.get_client')
+    def test_call_llm_with_max_retries(self, mock_get_client):
         """Test that max_retries=3 is passed to instructor."""
         # Create valid criteria for success action
         from prompt_core.models import EvaluationCriteria, Criterion
@@ -216,27 +199,27 @@ class TestLLMInteraction(unittest.TestCase):
             criteria=valid_criteria
         )
         
-        mock_provider = MockProvider()
-        mock_provider.responses = [expected_action]
-        mock_get_provider.return_value = mock_provider
+        mock_client = MockInstructorClient()
+        mock_client.responses = [expected_action]
+        mock_get_client.return_value = mock_client
         
         self.orchestrator._call_llm()
         
         # Verify max_retries parameter  
-        _, _, _, max_retries = mock_provider.last_call_args
+        _, _, _, max_retries = mock_client.last_call_args
         self.assertEqual(max_retries, 3)
     
-    @patch('prompt_core.llm_provider.get_provider')
-    def test_call_llm_message_history(self, mock_get_provider):
+    @patch('prompt_core.llm_interaction.get_client')
+    def test_call_llm_message_history(self, mock_get_client):
         """Test that current message history is passed to LLM."""
         expected_action = ConversationAction(
             action="continue",
             message="Response"
         )
         
-        mock_provider = MockProvider()
-        mock_provider.responses = [expected_action]
-        mock_get_provider.return_value = mock_provider
+        mock_client = MockInstructorClient()
+        mock_client.responses = [expected_action]
+        mock_get_client.return_value = mock_client
         
         # Simulate conversation history
         self.orchestrator.messages = [
@@ -249,7 +232,7 @@ class TestLLMInteraction(unittest.TestCase):
         self.orchestrator._call_llm()
         
         # Verify messages parameter includes full history
-        _, messages, _, _ = mock_provider.last_call_args
+        _, messages, _, _ = mock_client.last_call_args
         self.assertEqual(messages, self.orchestrator.messages)
     
     def test_multi_turn_conversation_with_real_llm(self):

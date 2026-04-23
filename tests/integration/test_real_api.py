@@ -13,7 +13,7 @@ Purpose: Verify our entire system works end-to-end with real LLMs.
 If tests fail with "API key not provided", the FIX is to CONFIGURE API KEYS,
 not to modify tests to use mocks.
 
-Required: OPENAI_API_KEY or other LLM provider API key
+LLM API access is required. See README.md for configuration options.
 Warning: These tests make real API calls and may incur costs.
 
 See TESTING.md and scripts/check_api_keys.py for help.
@@ -49,9 +49,6 @@ class TestRealAPI(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        # Use a cheaper/faster model for tests
-        self.test_model = "gpt-4o-mini"
-        
         # Note: We don't check API key here. Tests will FAIL if they try to use API without key.
         # This is the correct behavior - exposing missing dependencies.
     
@@ -67,7 +64,6 @@ class TestRealAPI(unittest.TestCase):
         # Use a simple context that might work in one turn
         orchestrator = ConversationOrchestrator(
             initial_context="evaluating coffee makers",
-            model=self.test_model,
             max_turns=3
         )
         
@@ -113,31 +109,65 @@ class TestRealAPI(unittest.TestCase):
         Expected to FAIL without API key - this is INTENTIONAL.
         DO NOT MOCK - configure API keys instead.
         """
-        # This is a simple test to see if the LLM understands the conversation format
+        # This test verifies the LLM can actually complete a conversation
+        # and return valid EvaluationCriteria (not stringified JSON)
         orchestrator = ConversationOrchestrator(
             initial_context="choosing a birthday gift for a 7-year-old",
-            model=self.test_model,
-            max_turns=5
+            max_turns=10
         )
         
-        # Start with empty input - this will FAIL if OPENAI_API_KEY is not set
-        result1 = orchestrator.process_turn("")
-        print(f"\nTurn 1: {result1.message[:100]}...")
+        # Simulate a conversation that should produce criteria
+        conversation_steps = [
+            "",  # Start empty to let LLM ask first question
+            "My budget is around $50",
+            "They like building toys and science kits",
+            "Safety is important for a 7-year-old",
+            "Educational value would be good",
+            "That's all I can think of"
+        ]
         
-        # The LLM should respond with either continue, success, or failure
-        # If continue, we could simulate a simple response
-        if not result1.is_complete and "budget" in result1.message.lower():
-            # LLM is asking about budget - give a simple response
-            result2 = orchestrator.process_turn("Around $50")
-            print(f"Turn 2: {result2.message[:100]}...")
-            
-            if not result2.is_complete:
-                # See what happens with another response
-                result3 = orchestrator.process_turn("They like building toys")
-                print(f"Turn 3: {result3.message[:100]}...")
+        last_result = None
         
-        # At this point, we've tested that the LLM can engage in conversation
-        # We don't assert specific outcomes because LLM responses are non-deterministic
+        for i, user_input in enumerate(conversation_steps):
+            try:
+                result = orchestrator.process_turn(user_input)
+                print(f"\nTurn {i+1}: {result.message[:100]}...")
+                print(f"Complete: {result.is_complete}")
+                
+                if result.is_complete:
+                    last_result = result
+                    break
+                    
+            except Exception as e:
+                self.fail(f"Conversation failed at turn {i+1}: {e}")
+        
+        # Check if conversation completed
+        if last_result and last_result.is_complete:
+            # If completed with success, criteria should be valid EvaluationCriteria
+            if last_result.criteria:
+                self.assertIsInstance(last_result.criteria, EvaluationCriteria)
+                self.assertGreaterEqual(len(last_result.criteria.criteria), 2)
+                # Check for budget criterion (case-insensitive)
+                budget_found = any(
+                    "budget" in criterion.name.lower() 
+                    for criterion in last_result.criteria.criteria
+                )
+                self.assertTrue(
+                    budget_found,
+                    f"Criteria missing 'budget'. Found: {[c.name for c in last_result.criteria.criteria]}"
+                )
+                print(f"\n✓ Conversation completed successfully!")
+                print(f"  Generated {len(last_result.criteria.criteria)} criteria")
+            else:
+                # Completed with failure
+                print(f"\n✗ Conversation failed: {last_result.message}")
+        else:
+            # Conversation didn't complete within steps
+            print(f"\n⚠ Conversation did not complete within {len(conversation_steps)} steps")
+            print(f"  Last turn count: {orchestrator.turn_count}")
+        
+        # The main test is that no validation errors occurred during the conversation
+        # (If LLM returns stringified JSON, instructor would raise validation error)
     
     def test_business_rules_enforcement_with_real_llm(self):
         """
@@ -196,8 +226,7 @@ class TestPromptEffectiveness(unittest.TestCase):
         DO NOT MOCK - configure API keys instead.
         """
         orchestrator = ConversationOrchestrator(
-            initial_context="test context",
-            model=self.test_model
+            initial_context="test context"
         )
         
         # This will FAIL if OPENAI_API_KEY is not set

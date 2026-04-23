@@ -16,11 +16,13 @@ try:
     LITELLM_AVAILABLE = True
 except ImportError:
     LITELLM_AVAILABLE = False
-    print("Warning: litellm not installed. Install with: pip install litellm")
-    print("Falling back to OpenAI-only mode.")
+    raise ImportError(
+        "litellm not installed. Install with: uv add litellm\n"
+        "This package is required for multi-provider LLM support."
+    )
 
 # Provider type for type hints
-ProviderType = Literal["openai", "google", "anthropic", "groq", "together", "azure"]
+ProviderType = Literal["openai", "google", "anthropic", "groq", "together", "azure", "openrouter"]
 
 
 def get_client(provider: Optional[ProviderType] = None):
@@ -28,8 +30,8 @@ def get_client(provider: Optional[ProviderType] = None):
     Get LLM client for the specified provider.
     
     Args:
-        provider: One of "openai", "google", "anthropic", "groq", "together", "azure"
-                 If None, uses LLM_PROVIDER from env or defaults to "openai"
+        provider: One of "openai", "google", "anthropic", "groq", "together", "azure", "openrouter"
+                 If None, uses provider from config
                  
     Returns:
         Instructor-patched client for the specified provider
@@ -39,49 +41,44 @@ def get_client(provider: Optional[ProviderType] = None):
         ImportError: If litellm not installed for multi-provider support
     """
     if not LITELLM_AVAILABLE:
-        # Fall back to original OpenAI-only implementation
-        from openai import OpenAI
-        
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable not set. "
-                "Please set it in a .env file or export it."
-            )
-        
-        client = OpenAI(api_key=api_key)
-        return instructor.from_openai(client)
+        raise ImportError(
+            "litellm not installed. Install with: uv add litellm\n"
+            "This package is required for multi-provider LLM support."
+        )
     
     # Use litellm for multi-provider support
     if provider is None:
-        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        # Get provider from config, not environment or defaults
+        from .config import config
+        provider = config.provider
+    
+    provider = provider.lower()
     
     # Map provider to litellm model name and required API key
     provider_config = {
         "openai": {
-            "model": "gpt-4o",
             "api_key_env": "OPENAI_API_KEY",
             "error_msg": "OPENAI_API_KEY not set. Get key from: https://platform.openai.com/api-keys"
         },
         "google": {
-            "model": "gemini/gemini-1.5-flash",
             "api_key_env": "GOOGLE_API_KEY", 
             "error_msg": "GOOGLE_API_KEY not set. Get key from: https://makersuite.google.com/app/apikey"
         },
         "anthropic": {
-            "model": "claude-3-haiku-20240307",
             "api_key_env": "ANTHROPIC_API_KEY",
             "error_msg": "ANTHROPIC_API_KEY not set. Get key from: https://console.anthropic.com"
         },
         "groq": {
-            "model": "groq/llama3-70b-8192",
             "api_key_env": "GROQ_API_KEY",
             "error_msg": "GROQ_API_KEY not set. Get key from: https://console.groq.com"
         },
         "together": {
-            "model": "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
             "api_key_env": "TOGETHER_API_KEY",
             "error_msg": "TOGETHER_API_KEY not set. Get key from: https://together.ai"
+        },
+        "openrouter": {
+            "api_key_env": "OPENROUTER_API_KEY",
+            "error_msg": "OPENROUTER_API_KEY not set. Get key from: https://openrouter.ai/keys"
         }
     }
     
@@ -111,19 +108,14 @@ def get_model_for_provider(provider: Optional[ProviderType] = None) -> str:
     Returns:
         Default model name for the provider
     """
+    from .config import config
+    
     if provider is None:
-        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        provider = config.provider
     
-    model_map = {
-        "openai": "gpt-4o-mini",  # Cheaper for testing
-        "google": "gemini/gemini-1.5-flash",
-        "anthropic": "claude-3-haiku-20240307",
-        "groq": "groq/llama3-70b-8192",
-        "together": "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-        "azure": "azure/gpt-4"  # Requires additional configuration
-    }
-    
-    return model_map.get(provider, "gpt-4o-mini")
+    # Get the default model for the requested provider from config
+    defaults = config.get("llm.defaults", {})
+    return defaults.get(provider, defaults.get("openai", "gpt-4o-mini"))
 
 
 def list_available_providers() -> dict:
@@ -139,42 +131,13 @@ def list_available_providers() -> dict:
         "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
         "groq": bool(os.getenv("GROQ_API_KEY")),
         "together": bool(os.getenv("TOGETHER_API_KEY")),
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
     }
     
     return providers
 
 
-def get_default_provider() -> str:
-    """
-    Get the default provider based on available API keys.
-    
-    Returns:
-        Name of the first available provider, or "openai" as fallback
-    """
-    available = list_available_providers()
-    
-    # Check for Google first (best free option)
-    if available.get("google"):
-        return "google"
-    
-    # Check for Groq (good free option)
-    if available.get("groq"):
-        return "groq"
-    
-    # Check for Together AI (has free credits)
-    if available.get("together"):
-        return "together"
-    
-    # Check for Anthropic (has $5 credit)
-    if available.get("anthropic"):
-        return "anthropic"
-    
-    # Fall back to OpenAI (has $5 credit)
-    if available.get("openai"):
-        return "openai"
-    
-    # No providers available
-    return "openai"
+
 
 
 # Legacy function for backward compatibility

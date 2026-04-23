@@ -13,8 +13,11 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
+all: 
+	uv sync
 help:
 	@echo "Available commands:"
+	@echo "  ${GREEN}make${NC}          	 - Get project ready to run"
 	@echo "  ${GREEN}make help${NC}          - Show this help message"
 	@echo "  ${GREEN}make test${NC}          - Run all unit tests (basic + conversation)"
 	@echo "  ${GREEN}make test-unit${NC}     - Run all unit tests under tests/unit/"

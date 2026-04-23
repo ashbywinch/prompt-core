@@ -83,7 +83,7 @@ def check_api_keys():
         import openai
         print("✓ OpenAI Python SDK installed")
     except ImportError:
-        print("✗ OpenAI Python SDK not installed (pip install openai)")
+        print("✗ OpenAI Python SDK not installed (part of litellm)")
     
     try:
         import instructor

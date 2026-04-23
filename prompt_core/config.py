@@ -1,0 +1,96 @@
+"""
+Configuration management for prompt-core.
+Reads from config.json and environment variables.
+"""
+import os
+import json
+from pathlib import Path
+from typing import Optional, Dict, Any
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    """Configuration manager for LLM settings."""
+    
+    _instance = None
+    _config_data = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._load_config()
+        return cls._instance
+    
+    def _load_config(self):
+        """Load configuration from config.json and environment variables."""
+        config_path = Path(__file__).parent.parent / "config.json"
+        
+        # Default configuration (empty - config.json must exist)
+        self._config_data = {
+            "llm": {
+                "provider": "",
+                "model": "",
+                "temperature": 0.7,
+                "max_retries": 3
+            }
+        }
+        
+        # Load from config.json if it exists
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    file_config = json.load(f)
+                    self._merge_config(self._config_data, file_config)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Warning: Could not load config.json: {e}")
+    
+    def _merge_config(self, base: Dict[str, Any], overlay: Dict[str, Any]):
+        """Recursively merge overlay configuration into base."""
+        for key, value in overlay.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                self._merge_config(base[key], value)
+            else:
+                base[key] = value
+    
+    
+    
+    @property
+    def provider(self) -> str:
+        """Get the configured LLM provider."""
+        return self._config_data["llm"]["provider"]
+    
+    @property
+    def model(self) -> str:
+        """Get the configured LLM model."""
+        return self._config_data["llm"]["model"]
+    
+    @property
+    def temperature(self) -> float:
+        """Get the configured temperature."""
+        return self._config_data["llm"]["temperature"]
+    
+    @property
+    def max_retries(self) -> int:
+        """Get the configured max retries."""
+        return self._config_data["llm"]["max_retries"]
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a configuration value by dot-separated key."""
+        keys = key.split('.')
+        value = self._config_data
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+    
+    def __str__(self) -> str:
+        """String representation of configuration."""
+        return json.dumps(self._config_data, indent=2)
+
+
+# Global configuration instance
+config = Config()

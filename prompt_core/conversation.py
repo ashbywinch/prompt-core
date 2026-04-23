@@ -40,11 +40,14 @@ class ConversationResult(BaseModel):
 class ConversationOrchestrator:
     """Manages conversation state and LLM interactions for criteria generation."""
     
-    def __init__(self, initial_context: str = "", max_turns: int = 10, model: str = "gpt-4o-mini"):
+    def __init__(self, initial_context: str = "", max_turns: int = 10):
+        from .config import config
+        
         self.messages = []
         self.turn_count = 0
         self.max_turns = max_turns
-        self.model = model
+        # Model is always from configuration
+        self.model = config.model
         
         # Minimal system prompt - instructor will handle schema explanation
         system_prompt = """
@@ -120,12 +123,12 @@ class ConversationOrchestrator:
             raise ValueError(f"Invalid action received: {action.action}")
     
     def _call_llm(self) -> ConversationAction:
-        """Call LLM using provider-agnostic interface."""
-        from .llm_provider import get_provider
+        """Call LLM using instructor with multi-provider support."""
+        from .llm_interaction import get_client
         
         try:
-            provider = get_provider()
-            return provider.create_structured_response(
+            client = get_client()
+            return client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,
                 response_model=ConversationAction,
@@ -135,9 +138,7 @@ class ConversationOrchestrator:
             # If no providers are available, give helpful error
             raise ImportError(
                 f"No LLM providers available. {e}\n"
-                "Install at least one provider:\n"
-                "  - OpenAI: pip install openai\n"
-                "  - Or install other provider packages"
+                "Install litellm for multi-provider LLM support: uv add litellm"
             )
     
     

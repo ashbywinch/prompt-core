@@ -26,16 +26,19 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
     
     def test_orchestrator_initialization(self):
         """Test ConversationOrchestrator initialization."""
+        from prompt_core.config import config
+        
         # Test with initial context
         orchestrator = ConversationOrchestrator(
             initial_context="birthday presents for child",
-            max_turns=5,
-            model="gpt-4o-mini"
+            max_turns=5
         )
         
         self.assertEqual(orchestrator.turn_count, 0)
         self.assertEqual(orchestrator.max_turns, 5)
-        self.assertEqual(orchestrator.model, "gpt-4o-mini")
+        # Model should come from configuration
+        expected_model = config.model
+        self.assertEqual(orchestrator.model, expected_model)
         self.assertEqual(len(orchestrator.messages), 2)  # system + user message
         self.assertEqual(orchestrator.messages[0]["role"], "system")
         self.assertIn("birthday presents for child", orchestrator.messages[1]["content"])

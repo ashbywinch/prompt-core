@@ -13,60 +13,17 @@ def get_client():
     """
     Get LLM client for the specified provider.
     
-    Uses multi-provider support if litellm is installed,
-    otherwise falls back to OpenAI-only mode.
+    Uses multi-provider support via litellm.
     
     Returns:
         Instructor-patched client for the LLM provider
         
     Raises:
         ValueError: If no API key is available for any provider
+        ImportError: If litellm is not installed
     """
-    # Try to use multi-provider version first
-    try:
-        from .llm_interaction_multi import get_client as get_multi_client
-        return get_multi_client()
-    except ImportError:
-        # Fall back to original OpenAI-only implementation
-        pass
-    
-    # Original OpenAI-only implementation
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        # Check if other API keys are available
-        other_keys = [
-            ("GOOGLE_API_KEY", "Google Gemini"),
-            ("GROQ_API_KEY", "Groq"),
-            ("ANTHROPIC_API_KEY", "Anthropic Claude"),
-            ("TOGETHER_API_KEY", "Together AI"),
-        ]
-        
-        available = []
-        for key_name, provider_name in other_keys:
-            if os.getenv(key_name):
-                available.append(f"{provider_name} (set {key_name})")
-        
-        if available:
-            raise ValueError(
-                f"OPENAI_API_KEY not set, but other providers available:\n"
-                f"  - {chr(10).join('  - ' + a for a in available)}\n"
-                f"\nInstall litellm for multi-provider support:\n"
-                f"  pip install litellm\n"
-                f"\nOr set OPENAI_API_KEY for OpenAI-only mode."
-            )
-        
-        raise ValueError(
-            "OPENAI_API_KEY environment variable not set. "
-            "Please set it in a .env file or export it.\n"
-            "\nFor free alternatives, consider:\n"
-            "  - Google Gemini: https://makersuite.google.com/app/apikey\n"
-            "  - Groq: https://console.groq.com\n"
-            "  - Together AI: https://together.ai (free credits)\n"
-            "\nThen install litellm: pip install litellm"
-        )
-    
-    client = OpenAI(api_key=api_key)
-    return instructor.patch(client)
+    from .llm_interaction_multi import get_client as get_multi_client
+    return get_multi_client()
 
 
 def generate_evaluation_criteria(
