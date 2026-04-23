@@ -212,6 +212,64 @@ class TestRealAPI(unittest.TestCase):
         # Note: We can't easily test this without actually providing a bad key
         # So this test is more documentation of expected behavior
         pass
+    
+    def test_uncooperative_user_max_turns(self):
+        """
+        Test that conversation fails when user doesn't provide enough information.
+        
+        Simulates an uncooperative user who gives vague responses, causing the
+        conversation to hit the max_turns limit.
+        """
+        # Use a small max_turns to speed up the test
+        # Note: We need to process max_turns + 1 turns to trigger the exception
+        # because turn_count is checked before incrementing
+        orchestrator = ConversationOrchestrator(
+            initial_context="choosing a laptop for programming",
+            max_turns=3  # Small limit for testing
+        )
+        
+        # Uncooperative user responses - vague, unhelpful
+        # We need max_turns + 1 responses to trigger the exception
+        uncooperative_responses = [
+            "I'm not sure",
+            "Maybe something good", 
+            "Whatever you think",
+            "I don't know"  # 4th response to trigger max_turns=3 exception
+        ]
+        
+        last_exception = None
+        
+        # Process turns until we hit max_turns
+        for i, response in enumerate(uncooperative_responses):
+            try:
+                result = orchestrator.process_turn(response)
+                print(f"\nTurn {i+1}: {result.message[:80]}...")
+                print(f"Complete: {result.is_complete}")
+                
+                if result.is_complete:
+                    # If somehow it completes, that's unexpected but we'll note it
+                    print(f"Unexpected completion at turn {i+1}: {result.message}")
+                    
+            except ValueError as e:
+                if "Maximum conversation turns" in str(e):
+                    print(f"\n✓ Correctly raised ValueError at turn {i+1}: {e}")
+                    last_exception = e
+                    break
+                else:
+                    # Some other ValueError
+                    last_exception = e
+                    raise
+            except Exception as e:
+                # Some other exception
+                last_exception = e
+                raise
+        
+        # We should have hit max_turns and gotten a ValueError
+        self.assertIsNotNone(last_exception, "Should have raised exception for max turns")
+        self.assertIn("Maximum conversation turns", str(last_exception))
+        self.assertIn("3", str(last_exception))  # max_turns=3
+        
+        print(f"\n✓ Test passed: Uncooperative user correctly triggers max_turns limit")
 
 
 class TestPromptEffectiveness(unittest.TestCase):
