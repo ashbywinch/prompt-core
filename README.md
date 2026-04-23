@@ -22,17 +22,45 @@ make
 
 ## Quick Start
 
-### 1. Set up environment
+### 1. Set up configuration
 
-export OPENROUTER_API_KEY=your-openrouter-api-key-here
+#### Step 1: Configure LLM provider and model
+Copy `config.json.example` to `config.json` and edit:
 
-# For free alternatives, you can also use:
-# export OPENROUTER_API_KEY=your-openrouter-key  # OpenRouter (recommended for testing, no rate limits)
-# export GOOGLE_API_KEY=your-google-ai-key       # Google Gemini (free tier)
-# export GROQ_API_KEY=your-groq-key              # Groq (fast, free tier available)
+```bash
+cp config.json.example config.json
 ```
 
-**Note**: You need at least one API key to run tests and use the library with real LLMs.
+Edit `config.json` to set your preferred LLM provider and model:
+```json
+{
+  "llm": {
+    "provider": "openrouter",  # or "openai", "google", "groq", "anthropic"
+    "model": "openrouter/xiaomi/mimo-v2-flash",
+    "temperature": 0.7,
+    "max_retries": 3
+  }
+}
+```
+
+#### Step 2: Set API key environment variable
+Based on your provider from Step 1, set the corresponding API key:
+
+```bash
+# For OpenRouter (recommended for testing - no rate limits)
+export OPENROUTER_API_KEY=your-openrouter-api-key-here
+
+# For OpenAI
+export OPENAI_API_KEY=your-openai-api-key-here
+
+# For Google Gemini (most generous free tier)
+export GOOGLE_API_KEY=your-google-api-key-here
+
+# For Groq (fast, free tier available)
+export GROQ_API_KEY=your-groq-api-key-here
+```
+
+**Note**: You need both `config.json` AND the corresponding API key environment variable.
 
 ### 2. Run the example
 
@@ -96,8 +124,8 @@ python tests/integration/test_real_api.py
 
 | Test Failure | What it means | How to fix |
 |--------------|---------------|------------|
-| `ValueError: OpenAI API key not provided` | Tests are trying to use real LLM API | Set `OPENAI_API_KEY` in `.env` file |
-| Any test mentioning "API key" or "authentication" | Missing API configuration | Configure at least one LLM provider API key |
+| `ValueError: OpenAI API key not provided` | Tests are trying to use real LLM API | Set API key environment variable |
+| Any test mentioning "API key" or "authentication" | Missing API configuration | Configure both `config.json` AND API key environment variable |
 | Tests pass without API key | Tests are only using mocks | No action needed - but consider running real API tests |
 
 ### Getting API Keys
@@ -108,19 +136,15 @@ python tests/integration/test_real_api.py
 3. **Groq**: [Get API key](https://console.groq.com) - Fast, free tier available  
 4. **OpenAI**: [Get API key](https://platform.openai.com/api-keys) - $5 free credits for new users
 
-Add your API key to `.env`:
+**Required setup:**
+1. **Create `config.json`** from `config.json.example`
+2. **Set API key environment variable** matching your provider choice in `config.json`
+
+Example for OpenRouter:
 ```bash
-# For OpenRouter (recommended for testing - no rate limits)
-OPENROUTER_API_KEY=your-openrouter-api-key
-
-# For Google Gemini
-GOOGLE_API_KEY=your-google-api-key
-
-# For OpenAI
-OPENAI_API_KEY=your-openai-api-key
-
-# Optional: Specify which provider to use
-LLM_PROVIDER=openrouter  # or "google", "openai", "groq"
+cp config.json.example config.json
+# Edit config.json to set provider: "openrouter"
+export OPENROUTER_API_KEY=your-openrouter-api-key
 ```
 
 See [TESTING.md](TESTING.md) for detailed testing strategy.
@@ -138,8 +162,9 @@ python scripts/check_api_keys.py
 
 **Solutions:**
 1. **Get a free API key** (recommended: Google Gemini for free tier)
-2. **Configure `.env` file**: `cp .env.example .env` then edit with your key
-3. **Verify setup**: Run `make test-integration` (should pass with API key)
+2. **Create `config.json`**: `cp config.json.example config.json` and edit provider/model
+3. **Set API key environment variable** matching your provider
+4. **Verify setup**: Run `make test-integration` (should pass with API key)
 
 ### Tests Pass Without API Key
 
@@ -258,6 +283,26 @@ The project is designed to be extended:
 3. Integrate with other LLM providers
 4. Add scoring functions to evaluate options against criteria
 5. Create web interface or GUI
+
+## Architecture & Development
+
+For developers and AI agents working with the codebase:
+
+### Quick Navigation
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Comprehensive architecture overview
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute guide for new contributors  
+- **[.agent-navigation](.agent-navigation)** - Structured hints for AI agents
+
+### Key Files to Understand First
+1. `prompt_core/models.py` - Data models & business rule validation
+2. `prompt_core/conversation.py` - Conversation orchestration & prompts
+3. `prompt_core/llm_interaction_multi.py` - LLM provider abstraction
+
+### Critical Patterns
+- Business rules enforced in Pydantic models (not prompts)
+- Prompts focus on behavioral guidance (not schema details)
+- Turn limits configurable and appear in both code and prompts
+- Tests fail without API keys to expose infrastructure issues
 
 ## License
 
