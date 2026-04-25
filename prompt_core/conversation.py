@@ -1,6 +1,9 @@
-from typing import List, Literal, Optional
+from __future__ import annotations
+
+from typing import Literal, Optional
 
 from pydantic import BaseModel, model_validator
+from .models import EvaluationCriteria
 
 
 class ConversationAction(BaseModel):
@@ -34,7 +37,9 @@ class ConversationResult(BaseModel):
     @classmethod
     def success(cls, criteria: "EvaluationCriteria") -> "ConversationResult":
         return cls(
-            criteria=criteria, message="Criteria generated successfully!", is_complete=True
+            criteria=criteria,
+            message="Criteria generated successfully!",
+            is_complete=True,
         )
 
     @classmethod
@@ -192,9 +197,6 @@ class ConversationOrchestrator:
                 "Install litellm for multi-provider LLM support: uv add litellm"
             )
 
-
-# Import here to avoid circular import
-from .models import EvaluationCriteria
 
 # Update forward references
 ConversationAction.model_rebuild()

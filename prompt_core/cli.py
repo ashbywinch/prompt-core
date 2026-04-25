@@ -39,7 +39,9 @@ def handle_error(error: Exception):
             f"\n✗ Configuration error: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, APIKeyError):
-        typer.secho(f"\n✗ API key error: {error.message}", err=True, fg=typer.colors.RED)
+        typer.secho(
+            f"\n✗ API key error: {error.message}", err=True, fg=typer.colors.RED
+        )
     elif isinstance(error, ProviderNotSupportedError):
         typer.secho(
             f"\n✗ Provider error: {error.message}", err=True, fg=typer.colors.RED
@@ -93,7 +95,9 @@ def generate(
     typer.echo(f"Generating evaluation criteria for: {context}")
 
     try:
-        criteria = generate_evaluation_criteria(context=context, temperature=temperature)
+        criteria = generate_evaluation_criteria(
+            context=context, temperature=temperature
+        )
 
         typer.echo(f"\n✓ Generated {len(criteria.criteria)} criteria")
         typer.echo(f"Context: {criteria.context}")
@@ -167,7 +171,7 @@ def validate(
 
         # Validate by creating the model
         criteria = EvaluationCriteria(**data)
-        typer.echo(f"✓ Valid EvaluationCriteria object")
+        typer.echo("✓ Valid EvaluationCriteria object")
         typer.echo(f"Context: {criteria.context}")
         typer.echo(f"Number of criteria: {len(criteria.criteria)}")
 
@@ -256,7 +260,7 @@ def converse(
 
         else:
             # Failure case
-            typer.echo(f"\n✗ Conversation ended without generating criteria")
+            typer.echo("\n✗ Conversation ended without generating criteria")
             raise typer.Exit(1)
 
     except KeyboardInterrupt:

@@ -5,16 +5,12 @@ No mocking needed - these test model validation and behavior.
 """
 
 import unittest
-from typing import Optional
 from pydantic import ValidationError
 
 from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import ConversationAction, ConversationResult
 from prompt_core.exceptions import (
     CriteriaValidationError,
-    TurnLimitExceededError,
-    ConversationFailedError,
-    InvalidResponseError,
 )
 
 

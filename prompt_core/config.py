@@ -3,10 +3,9 @@ Configuration management for prompt-core.
 Reads from config.json and environment variables.
 """
 
-import os
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -11,7 +11,6 @@ from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import (
     ConversationOrchestrator,
     ConversationAction,
-    ConversationResult,
 )
 from prompt_core.exceptions import (
     ConversationFailedError,
