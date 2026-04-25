@@ -25,26 +25,40 @@ class Config:
     
     def _load_config(self):
         """Load configuration from config.json and environment variables."""
+        from .exceptions import ConfigFileError, ConfigurationError
+        
         config_path = Path(__file__).parent.parent / "config.json"
         
-        # Default configuration (empty - config.json must exist)
+        # Default configuration - no defaults for provider/model, they must be configured
         self._config_data = {
             "llm": {
-                "provider": "",
-                "model": "",
                 "temperature": 0.7,
                 "max_retries": 3
             }
         }
         
-        # Load from config.json if it exists
-        if config_path.exists():
-            try:
-                with open(config_path, 'r') as f:
-                    file_config = json.load(f)
-                    self._merge_config(self._config_data, file_config)
-            except (json.JSONDecodeError, IOError) as e:
-                print(f"Warning: Could not load config.json: {e}")
+        # config.json MUST exist
+        if not config_path.exists():
+            raise ConfigFileError(
+                f"Configuration file not found: {config_path}\n"
+                f"Create config.json from config.json.example: cp config.json.example config.json"
+            )
+        
+        try:
+            with open(config_path, 'r') as f:
+                file_config = json.load(f)
+                self._merge_config(self._config_data, file_config)
+        except json.JSONDecodeError as e:
+            raise ConfigFileError(f"Invalid JSON in config.json: {e}")
+        except IOError as e:
+            raise ConfigFileError(f"Could not read config.json: {e}")
+        
+        # Validate required fields
+        if not self._config_data.get("llm", {}).get("provider"):
+            raise ConfigurationError("Missing required field in config.json: llm.provider")
+        
+        if not self._config_data.get("llm", {}).get("model"):
+            raise ConfigurationError("Missing required field in config.json: llm.model")
     
     def _merge_config(self, base: Dict[str, Any], overlay: Dict[str, Any]):
         """Recursively merge overlay configuration into base."""

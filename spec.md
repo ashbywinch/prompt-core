@@ -111,7 +111,7 @@ Assistant: "What's your budget range for this tool?"
 - **Weighted importance**: Each factor has 1-10 importance rating
 
 ### 2. Conversation Limits
-- **Max 10 turns**: Prevents excessive API costs and user fatigue
+- **Configurable limit to the number of conversation turns**: Prevents excessive API costs and user fatigue
 - **Clear exit points**: Users can stop anytime, assistant can declare when stuck
 - **No infinite loops**: Assistant recognizes unproductive conversations
 

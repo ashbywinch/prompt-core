@@ -5,9 +5,14 @@ No mocking needed - these test model validation and behavior.
 """
 import unittest
 from typing import Optional
+from pydantic import ValidationError
 
 from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import ConversationAction, ConversationResult
+from prompt_core.exceptions import (
+    CriteriaValidationError, TurnLimitExceededError, 
+    ConversationFailedError, InvalidResponseError
+)
 
 
 class TestCriterionModel(unittest.TestCase):
@@ -45,11 +50,11 @@ class TestCriterionModel(unittest.TestCase):
         Criterion(name="test", description="test", weight=5.0)
         Criterion(name="test", description="test", weight=10.0)
         
-        # Invalid weights should raise ValueError
-        with self.assertRaises(ValueError):
+        # Invalid weights should raise ValidationError (Pydantic's error)
+        with self.assertRaises(ValidationError):
             Criterion(name="test", description="test", weight=-1.0)
         
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValidationError):
             Criterion(name="test", description="test", weight=11.0)
 
 
@@ -95,7 +100,7 @@ class TestEvaluationCriteriaModel(unittest.TestCase):
         EvaluationCriteria(criteria=more_criteria)
         
         # Invalid: only 1 criterion
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(CriteriaValidationError) as context:
             EvaluationCriteria(criteria=[self.valid_criteria[0]])
         
         self.assertIn("Must have at least 2 criteria", str(context.exception))
@@ -124,7 +129,7 @@ class TestEvaluationCriteriaModel(unittest.TestCase):
             Criterion(name="cost", description="Cost constraint", weight=8.0),
             Criterion(name="quality", description="Quality level", weight=7.0),
         ]
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(CriteriaValidationError) as context:
             EvaluationCriteria(criteria=no_budget)
         
         self.assertIn("Must include a criterion named 'budget'", str(context.exception))
@@ -134,7 +139,7 @@ class TestEvaluationCriteriaModel(unittest.TestCase):
             Criterion(name="budgte", description="Misspelled budget", weight=8.0),
             Criterion(name="quality", description="Quality level", weight=7.0),
         ]
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(CriteriaValidationError) as context:
             EvaluationCriteria(criteria=misspelled)
         
         self.assertIn("Must include a criterion named 'budget'", str(context.exception))

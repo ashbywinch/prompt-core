@@ -40,14 +40,14 @@ class ConversationResult(BaseModel):
 class ConversationOrchestrator:
     """Manages conversation state and LLM interactions for criteria generation."""
     
-    def __init__(self, initial_context: str = "", max_turns: int = 10):
+    def __init__(self, initial_context: str = "", max_turns: int = 10, model: str = None):
         from .config import config
         
         self.messages = []
         self.turn_count = 0
         self.max_turns = max_turns
-        # Model is always from configuration
-        self.model = config.model
+        # Use provided model or fall back to config
+        self.model = model or config.model
         
         # System prompt - focus on behavioral guidance, instructor handles schema
         system_prompt = f"""
@@ -105,6 +105,7 @@ class ConversationOrchestrator:
         - Conversation limit: {self.max_turns} turns total
         - Focus on gathering real, specific information
         - Follow the structured response format provided
+        - You MUST include a criterion named exactly "budget" (case-insensitive) in the criteria list
         """
         
         self.messages.append({"role": "system", "content": system_prompt})
@@ -132,7 +133,8 @@ class ConversationOrchestrator:
         """
         # Check turn limit
         if self.turn_count >= self.max_turns:
-            raise ValueError(f"Maximum conversation turns ({self.max_turns}) reached")
+            from .exceptions import TurnLimitExceededError
+            raise TurnLimitExceededError(self.max_turns)
         
         # Add user message to history
         if user_input.strip():
@@ -153,14 +155,18 @@ class ConversationOrchestrator:
         elif action.action == "success":
             return ConversationResult.success(action.criteria)
         elif action.action == "failure":
-            raise ValueError(f"LLM indicated failure: {action.message}")
+            from .exceptions import ConversationFailedError
+            raise ConversationFailedError(action.message)
         else:
             # Should not happen due to Literal type
-            raise ValueError(f"Invalid action received: {action.action}")
+            from .exceptions import InvalidResponseError
+            raise InvalidResponseError(f"Invalid action received: {action.action}")
     
     def _call_llm(self) -> ConversationAction:
         """Call LLM using instructor with multi-provider support."""
         from .llm_interaction import get_client
+        from .config import config
+        from .exceptions import ProviderNotFoundError
         
         try:
             client = get_client()
@@ -168,11 +174,11 @@ class ConversationOrchestrator:
                 model=self.model,
                 messages=self.messages,
                 response_model=ConversationAction,
-                max_retries=3
+                max_retries=config.max_retries
             )
         except ImportError as e:
             # If no providers are available, give helpful error
-            raise ImportError(
+            raise ProviderNotFoundError(
                 f"No LLM providers available. {e}\n"
                 "Install litellm for multi-provider LLM support: uv add litellm"
             )

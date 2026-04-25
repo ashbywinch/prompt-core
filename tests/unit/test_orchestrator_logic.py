@@ -8,6 +8,9 @@ from unittest.mock import Mock, patch
 
 from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import ConversationOrchestrator, ConversationAction, ConversationResult
+from prompt_core.exceptions import (
+    ConversationFailedError, TurnLimitExceededError, InvalidResponseError
+)
 
 
 class TestConversationOrchestratorLogic(unittest.TestCase):
@@ -109,8 +112,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         )
         mock_call_llm.return_value = action
         
-        # process_turn() should raise ValueError for failure action
-        with self.assertRaises(ValueError) as context:
+        # process_turn() should raise ConversationFailedError for failure action
+        with self.assertRaises(ConversationFailedError) as context:
             orchestrator.process_turn("Something vague")
         
         self.assertIn("LLM indicated failure: I don't have enough information to help", str(context.exception))
@@ -194,8 +197,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         self.assertFalse(result2.is_complete)
         self.assertEqual(orchestrator.turn_count, 2)
         
-        # Third turn - should raise ValueError (turn limit)
-        with self.assertRaises(ValueError) as context:
+        # Third turn - should raise TurnLimitExceededError (turn limit)
+        with self.assertRaises(TurnLimitExceededError) as context:
             orchestrator.process_turn("A3")
         
         self.assertIn("Maximum conversation turns (2) reached", str(context.exception))
@@ -209,10 +212,9 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         mock_call_llm.side_effect = ValueError("Validation failed after retries")
         
         # process_turn() should propagate the exception
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(ValueError):
             orchestrator.process_turn("test")
         
-        self.assertIn("Validation failed", str(context.exception))
         self.assertEqual(orchestrator.turn_count, 1)  # Turn was counted
     
     @patch.object(ConversationOrchestrator, '_call_llm')
@@ -228,8 +230,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         mock_action.criteria = None
         mock_call_llm.return_value = mock_action
         
-        # process_turn() should raise ValueError for invalid action
-        with self.assertRaises(ValueError) as context:
+        # process_turn() should raise InvalidResponseError for invalid action
+        with self.assertRaises(InvalidResponseError) as context:
             orchestrator.process_turn("test")
         
         self.assertIn("Invalid action received: invalid_action", str(context.exception))

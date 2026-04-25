@@ -1,5 +1,5 @@
 # Makefile for prompt-core test automation
-.PHONY: help test test-unit test-basic test-integration test-all coverage lint clean
+.PHONY: help test test-unit test-integration test-all coverage lint clean
 
 # Variables
 PYTHON := .venv/bin/python
@@ -19,40 +19,29 @@ help:
 	@echo "Available commands:"
 	@echo "  ${GREEN}make${NC}          	 - Get project ready to run"
 	@echo "  ${GREEN}make help${NC}          - Show this help message"
-	@echo "  ${GREEN}make test${NC}          - Run all unit tests (basic + conversation)"
+	@echo "  ${GREEN}make test${NC}          - Run all unit tests"
 	@echo "  ${GREEN}make test-unit${NC}     - Run all unit tests under tests/unit/"
-	@echo "  ${GREEN}make test-basic${NC}    - Run basic model tests only (no mocking)"
-	@echo "  ${GREEN}make test-conversation${NC} - Run conversation orchestrator tests"
-	@echo "  ${GREEN}make test-integration${NC} - Run integration tests with real API (requires OPENAI_API_KEY)"
+	@echo "  ${GREEN}make test-integration${NC} - Run integration tests with real API (requires API key)"
 	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + integration)"
 	@echo "  ${GREEN}make coverage${NC}      - Run tests with coverage report"
 	@echo "  ${GREEN}make lint${NC}          - Run code linting (if available)"
 	@echo "  ${GREEN}make clean${NC}         - Clean up generated files"
 
-test: test-basic test-conversation
+test: test-unit
 	@echo "${GREEN}✓ All unit tests passed${NC}"
 
 test-unit:
 	@echo "${YELLOW}Running all unit tests...${NC}"
-	@${PYTHON} test_conversation.py
-
-test-basic:
-	@echo "${YELLOW}Running basic model tests...${NC}"
-	@${PYTHON} test_basic.py
-
-test-conversation: test-basic
-	@echo "${YELLOW}Running orchestrator and LLM interaction tests...${NC}"
-	@${UNITTEST} tests/unit/test_orchestrator_logic.py -v
-	@${UNITTEST} tests/unit/test_llm_interaction.py -v
+	@${UNITTEST} discover tests/unit/ -v
 
 test-integration:
-	@echo "${YELLOW}Running integration tests (requires OPENAI_API_KEY)...${NC}"
+	@echo "${YELLOW}Running integration tests (requires API key)...${NC}"
 	@echo "${YELLOW}Note: These tests will ${RED}FAIL${YELLOW} if API key is missing${NC}"
 	@${UNITTEST} discover tests/integration/ -v
 
 test-all: test test-integration
 	@echo "${GREEN}✓ All tests (unit + integration) completed${NC}"
-	@echo "${YELLOW}Note: Integration tests may fail if OPENAI_API_KEY is not set${NC}"
+	@echo "${YELLOW}Note: Integration tests may fail if API key is not set${NC}"
 
 # Test with coverage (requires coverage package)
 coverage:
@@ -96,4 +85,4 @@ clean:
 ci-test: test
 	@echo "${GREEN}✓ CI tests passed (unit tests only)${NC}"
 	@echo "${YELLOW}Note: Integration tests not run in CI by default${NC}"
-	@echo "${YELLOW}To run integration tests: make test-integration (requires OPENAI_API_KEY)${NC}"
+	@echo "${YELLOW}To run integration tests: make test-integration (requires API key)${NC}"

@@ -32,13 +32,15 @@ class EvaluationCriteria(BaseModel):
     @model_validator(mode='after')
     def validate_business_rules(self):
         """Validate business rules for EvaluationCriteria."""
+        from .exceptions import CriteriaValidationError
+        
         # Rule 1: Must have at least 2 criteria
         if len(self.criteria) < 2:
-            raise ValueError("Must have at least 2 criteria")
+            raise CriteriaValidationError("Must have at least 2 criteria")
         
         # Rule 2: Must include "budget" criterion (case-insensitive)
         if not any(c.name.lower() == "budget" for c in self.criteria):
-            raise ValueError("Must include a criterion named 'budget' (case-insensitive)")
+            raise CriteriaValidationError("Must include a criterion named 'budget' (case-insensitive)")
         return self
     
     def add_criterion(self, name: str, description: str, weight: float = 1.0, ideal_value: Optional[str] = None):

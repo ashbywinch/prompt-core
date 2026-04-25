@@ -5,7 +5,8 @@
 ### **Core Files (Read These First)**
 1. `prompt_core/models.py` - Data models & business rule validation
 2. `prompt_core/conversation.py` - Conversation orchestration & prompts  
-3. `prompt_core/llm_interaction_multi.py` - LLM provider abstraction
+3. `prompt_core/llm_interaction.py` - LLM provider abstraction
+4. `prompt_core/exceptions.py` - Custom exception hierarchy
 
 ### **Configuration Files**
 - `config.json` - LLM provider and model settings (REQUIRED)
@@ -53,13 +54,6 @@ config = Config()  # Reads ONLY from config.json
 # Note: API keys come from environment variables, not config.json
 ```
 
-### `llm_provider.py` - Provider Interface
-```python
-# Abstract base class for LLM providers
-LLMProvider  # Defines interface for structured responses
-get_provider()  # Factory function to get provider instance
-```
-
 ## Critical Patterns
 
 ### 1. Prompt Design Philosophy
@@ -76,8 +70,8 @@ User Input → LLM Response → Instructor → Pydantic Validation
 
 ### 3. Failure Modes
 - **LLM-initiated**: Returns `action: "failure"` for unconstructive users
-- **System-initiated**: `ValueError` when `max_turns` exceeded
-- **Validation failure**: Pydantic raises error for invalid criteria
+- **System-initiated**: `TurnLimitExceededError` when `max_turns` exceeded
+- **Validation failure**: Custom exceptions for business rule violations
 
 ## Common Tasks & Where to Look
 
@@ -85,7 +79,7 @@ User Input → LLM Response → Instructor → Pydantic Validation
 |------|--------------|---------------------|
 | Add business rule | `models.py` | `EvaluationCriteria.validate_business_rules()` |
 | Modify prompt | `conversation.py` | `ConversationOrchestrator.__init__()` |
-| Change LLM provider | `llm_interaction_multi.py` | `get_client()` |
+| Change LLM provider | `llm_interaction.py` | `get_client()` |
 | Add conversation outcome | `conversation.py` | `ConversationAction` model |
 | Add test for new feature | `tests/unit/` | Follow existing test patterns |
 

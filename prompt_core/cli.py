@@ -9,8 +9,38 @@ from pathlib import Path
 
 from . import generate_evaluation_criteria, chat_with_llm, EvaluationCriteria
 from .conversation import ConversationOrchestrator
+from .exceptions import (
+    PromptCoreError, ConfigurationError, ConfigFileError, APIKeyError,
+    ProviderNotSupportedError, ProviderNotFoundError, TurnLimitExceededError,
+    ConversationFailedError, CriteriaValidationError
+)
 
 app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
+
+
+def handle_error(error: Exception):
+    """Handle errors with user-friendly messages."""
+    if isinstance(error, ConfigFileError):
+        typer.echo(f"\n✗ Configuration file error: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, ConfigurationError):
+        typer.echo(f"\n✗ Configuration error: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, APIKeyError):
+        typer.echo(f"\n✗ API key error: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, ProviderNotSupportedError):
+        typer.echo(f"\n✗ Provider error: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, ProviderNotFoundError):
+        typer.echo(f"\n✗ Provider not found: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, TurnLimitExceededError):
+        typer.echo(f"\n✗ {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, ConversationFailedError):
+        typer.echo(f"\n✗ Conversation failed: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, CriteriaValidationError):
+        typer.echo(f"\n✗ Validation error: {error.message}", err=True, fg=typer.colors.RED)
+    elif isinstance(error, PromptCoreError):
+        typer.echo(f"\n✗ Error: {error.message}", err=True, fg=typer.colors.RED)
+    else:
+        typer.echo(f"\n✗ Unexpected error: {str(error)[:200]}", err=True, fg=typer.colors.RED)
+    raise typer.Exit(1)
 
 
 @app.command()
@@ -74,8 +104,7 @@ def generate(
             typer.echo(f"  {criterion.name}: {weight:.3f}")
             
     except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        handle_error(e)
 
 
 @app.command()
@@ -112,8 +141,7 @@ def chat(
         typer.echo(response)
         
     except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        handle_error(e)
 
 
 @app.command()
@@ -238,23 +266,7 @@ def converse(
         typer.echo("\n\nConversation cancelled.")
         raise typer.Exit(0)
     except Exception as e:
-        # Extract user-friendly error message
-        error_msg = str(e)
-        # Try to extract the most user-facing part
-        if "OPENAI_API_KEY" in error_msg:
-            user_msg = "API authentication error - check your OPENAI_API_KEY environment variable"
-        elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
-            user_msg = "API authentication error - check your API key"
-        elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
-            user_msg = "Connection error - check your network"
-        elif "maximum retries" in error_msg.lower():
-            user_msg = "Could not get valid response from AI after multiple attempts"
-        else:
-            # Show first 200 chars of original error
-            user_msg = f"Error: {error_msg[:200]}..."
-        
-        typer.echo(f"\n✗ {user_msg}", err=True)
-        raise typer.Exit(1)
+        handle_error(e)
 
 
 if __name__ == "__main__":
