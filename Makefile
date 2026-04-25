@@ -27,31 +27,28 @@ help:
 
 # Setup: Install uv if not present, then sync dependencies
 setup:
-	@if ! command -v uv &> /dev/null; then \
-		echo "Installing uv..."; \
-		curl -LsSf https://astral.sh/uv/install.sh | sh; \
-	fi
+	@uv --version >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
 	@uv sync --all-extras
 
-test: test-unit
+test: setup test-unit
 
-test-unit:
+test-unit: setup
 	@${UNITTEST} discover tests/unit/ -v
 
-evals:
+evals: setup
 	@${UNITTEST} discover tests/evals/ -v
 
 test-all: test-unit evals
 
 # Test with coverage (requires coverage package)
-coverage:
+coverage: setup
 	@${COVERAGE} run -m unittest discover tests/unit/
 	@${COVERAGE} report -m
 	@${COVERAGE} html
 	@echo "${GREEN}Coverage report generated: htmlcov/index.html${NC}"
 
 # Linting with black
-lint:
+lint: setup
 	.venv/bin/black --check --target-version py312 prompt_core/ tests/
 
 # Clean up generated files
