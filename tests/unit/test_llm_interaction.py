@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
 """
-Unit tests for LLM interaction logic.
+Unit tests for LLM interaction logic with mocked API calls.
 
-IMPORTANT TEST PHILOSOPHY:
-=========================
-1. REAL API TESTS: Some tests use REAL LLM API calls (not mocks)
-2. INTENTIONAL FAILURES: These tests are DESIGNED TO FAIL without API keys
-3. INFRASTRUCTURE VALIDATION: Failures expose missing infrastructure early
-4. DO NOT MOCK: Do not convert real API tests to mocks - fix by configuring API keys
-
-Purpose: Verify our code works with actual LLMs, not just mocked responses.
-If tests fail with "API key not provided", the FIX is to CONFIGURE API KEYS,
-not to modify tests to use mocks.
-
-See TESTING.md and scripts/check_api_keys.py for help.
+These tests use mocks to simulate error cases and test logic
+that would be difficult to test with real API calls.
 """
 import unittest
 from unittest.mock import Mock, patch, MagicMock
@@ -64,61 +54,6 @@ class TestLLMInteraction(unittest.TestCase):
         """Set up test fixtures."""
         # Don't specify model - use default from configuration
         self.orchestrator = ConversationOrchestrator()
-    
-    # =========================================================================
-    # REAL API TESTS (require API keys - will FAIL without)
-    # =========================================================================
-    # These tests make ACTUAL API calls to verify our code works with real LLMs.
-    # DO NOT convert these to mocked tests - fix by configuring API keys.
-    # =========================================================================
-    
-    def test_call_llm_success(self):
-        """
-        Test successful LLM call returns ConversationAction.
-        
-        ⚠️  REAL API TEST - REQUIRES API KEY  ⚠️
-        ========================================
-        This test makes ACTUAL API calls to verify:
-        1. Our prompts work with real LLMs
-        2. LLMs generate valid ConversationAction responses
-        3. The entire pipeline works end-to-end
-        
-        EXPECTED BEHAVIOR:
-        - With API key: Test passes if prompts work correctly
-        - Without API key: Test FAILS with "API key not provided"
-        
-        DO NOT MOCK THIS TEST!
-        If it fails, configure API keys (see scripts/check_api_keys.py)
-        """
-        # Call _call_llm - will use real OpenAIProvider via get_provider()
-        # This requires OPENAI_API_KEY to be set
-        # INTENTIONAL: This will FAIL without API key to expose missing infrastructure
-        action = self.orchestrator._call_llm()
-        
-        # If we get here, API key is set and call succeeded
-        # Verify we got a valid ConversationAction
-        self.assertIsInstance(action, ConversationAction)
-        self.assertIn(action.action, ["continue", "success", "failure"])
-        
-        # If action is "continue" or "failure", it should have a message
-        if action.action in ["continue", "failure"]:
-            self.assertIsNotNone(action.message)
-            self.assertTrue(len(action.message) > 0)
-        
-        # If action is "success", it should have criteria
-        if action.action == "success":
-            self.assertIsNotNone(action.criteria)
-            # Criteria should meet business rules
-            self.assertGreaterEqual(len(action.criteria.criteria), 2)
-            has_budget = any(c.name.lower() == "budget" for c in action.criteria.criteria)
-            self.assertTrue(has_budget, "Criteria should include 'budget'")
-    
-    # =========================================================================
-    # MOCKED TESTS (do not require API keys)
-    # =========================================================================
-    # These tests use mocks to simulate error cases and test logic
-    # that would be difficult to test with real API calls.
-    # =========================================================================
     
     @patch('prompt_core.llm_interaction.get_client')
     def test_call_llm_with_validation_error(self, mock_get_client):
@@ -234,67 +169,6 @@ class TestLLMInteraction(unittest.TestCase):
         # Verify messages parameter includes full history
         _, messages, _, _ = mock_client.last_call_args
         self.assertEqual(messages, self.orchestrator.messages)
-    
-    def test_multi_turn_conversation_with_real_llm(self):
-        """
-        Test multi-turn conversation with real LLM.
-        
-        ⚠️  REAL API TEST - REQUIRES API KEY  ⚠️
-        ========================================
-        This test makes ACTUAL API calls to verify multi-turn conversations.
-        Tests conversation flow, turn counting, and response handling with real LLM.
-        
-        EXPECTED BEHAVIOR:
-        - With API key: Test passes if multi-turn conversation works
-        - Without API key: Test FAILS with "API key not provided"
-        
-        DO NOT MOCK THIS TEST!
-        If it fails, configure API keys (see scripts/check_api_keys.py)
-        """
-        
-        orchestrator = ConversationOrchestrator(
-            initial_context="choosing a birthday gift",
-            max_turns=3
-        )
-        
-        # First turn
-        result1 = orchestrator.process_turn("Hello, I need help choosing a gift")
-        
-        # Should get a response
-        self.assertIsNotNone(result1.message)
-        
-        # If we get "continue", we can test another turn
-        if not result1.is_complete and result1.message:
-            print(f"Turn 1 response: {result1.message[:50]}...")
-            
-            # Second turn - respond to LLM's question
-            # For testing, give a generic response
-            result2 = orchestrator.process_turn("Around $50 budget")
-            
-            self.assertIsNotNone(result2.message)
-            
-            if not result2.is_complete:
-                print(f"Turn 2 response: {result2.message[:50]}...")
-                
-                # Third turn
-                result3 = orchestrator.process_turn("For a 7-year-old who likes science")
-                
-                self.assertIsNotNone(result3.message)
-                print(f"Turn 3 response: {result3.message[:50]}...")
-        
-        # At this point, conversation should either:
-        # 1. Be complete (success or failure)
-        # 2. Still continuing (if max_turns not reached)
-        
-        # Verify conversation state is consistent
-        self.assertEqual(orchestrator.turn_count, orchestrator.max_turns or 3)
-        
-        # If we got criteria, verify it meets business rules
-        if result1.criteria or (hasattr(result2, 'criteria') and result2.criteria) or (hasattr(result3, 'criteria') and result3.criteria):
-            criteria = result1.criteria or result2.criteria or result3.criteria
-            self.assertGreaterEqual(len(criteria.criteria), 2)
-            has_budget = any(c.name.lower() == "budget" for c in criteria.criteria)
-            self.assertTrue(has_budget, "Criteria should include 'budget'")
 
 
 if __name__ == '__main__':

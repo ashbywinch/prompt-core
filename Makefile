@@ -1,5 +1,5 @@
 # Makefile for prompt-core test automation
-.PHONY: help test test-unit test-integration test-all coverage lint clean
+.PHONY: help test evals test-unit test-all coverage lint clean
 
 # Variables
 PYTHON := .venv/bin/python
@@ -19,37 +19,25 @@ help:
 	@echo "Available commands:"
 	@echo "  ${GREEN}make${NC}          	 - Get project ready to run"
 	@echo "  ${GREEN}make help${NC}          - Show this help message"
-	@echo "  ${GREEN}make test${NC}          - Run all unit tests"
-	@echo "  ${GREEN}make test-unit${NC}     - Run all unit tests under tests/unit/"
-	@echo "  ${GREEN}make test-integration${NC} - Run integration tests with real API (requires API key)"
-	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + integration)"
+	@echo "  ${GREEN}make test${NC}          - Run unit tests (no API key required)"
+	@echo "  ${GREEN}make evals${NC}        - Run evaluation tests with real API (requires API key)"
+	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + evals)"
 	@echo "  ${GREEN}make coverage${NC}      - Run tests with coverage report"
 	@echo "  ${GREEN}make lint${NC}          - Run code linting (if available)"
 	@echo "  ${GREEN}make clean${NC}         - Clean up generated files"
 
 test: test-unit
-	@echo "${GREEN}✓ All unit tests passed${NC}"
 
 test-unit:
-	@echo "${YELLOW}Running all unit tests...${NC}"
 	@${UNITTEST} discover tests/unit/ -v
 
-test-integration:
-	@echo "${YELLOW}Running integration tests (requires API key)...${NC}"
-	@echo "${YELLOW}Note: These tests will ${RED}FAIL${YELLOW} if API key is missing${NC}"
-	@${UNITTEST} discover tests/integration/ -v
+evals:
+	@${UNITTEST} discover tests/evals/ -v
 
-test-all: test test-integration
-	@echo "${GREEN}✓ All tests (unit + integration) completed${NC}"
-	@echo "${YELLOW}Note: Integration tests may fail if API key is not set${NC}"
+test-all: test-unit evals
 
 # Test with coverage (requires coverage package)
 coverage:
-	@if [ ! -f .venv/bin/coverage ]; then \
-		echo "${YELLOW}Installing coverage package...${NC}"; \
-		.venv/bin/pip install coverage; \
-	fi
-	@echo "${YELLOW}Running tests with coverage...${NC}"
 	@${COVERAGE} run -m unittest discover tests/unit/
 	@${COVERAGE} report -m
 	@${COVERAGE} html
@@ -57,32 +45,14 @@ coverage:
 
 # Linting (if you have flake8, black, or other linters)
 lint:
-	@if [ -f .venv/bin/flake8 ]; then \
-		echo "${YELLOW}Running flake8...${NC}"; \
-		.venv/bin/flake8 prompt_core/ tests/; \
-	else \
-		echo "${YELLOW}flake8 not installed. Install with: pip install flake8${NC}"; \
-	fi
-	@if [ -f .venv/bin/black ]; then \
-		echo "${YELLOW}Running black check...${NC}"; \
-		.venv/bin/black --check prompt_core/ tests/; \
-	else \
-		echo "${YELLOW}black not installed. Install with: pip install black${NC}"; \
-	fi
+	.venv/bin/black --check prompt_core/ tests/; 
 
 # Clean up generated files
 clean:
-	@echo "${YELLOW}Cleaning up...${NC}"
 	@rm -rf htmlcov/
 	@rm -f .coverage
 	@rm -f coverage.xml
 	@rm -f test-results.xml
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
-	@echo "${GREEN}✓ Cleanup complete${NC}"
 
-# Run all tests in CI environment (fails if integration tests can't run)
-ci-test: test
-	@echo "${GREEN}✓ CI tests passed (unit tests only)${NC}"
-	@echo "${YELLOW}Note: Integration tests not run in CI by default${NC}"
-	@echo "${YELLOW}To run integration tests: make test-integration (requires API key)${NC}"
