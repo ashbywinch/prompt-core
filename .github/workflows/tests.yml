@@ -1,165 +1,28 @@
-name: Tests
+name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:  # Allow manual runs
-
-env:
-  PYTHON_VERSION: '3.11'
-  VENV_NAME: .venv
+    branches: [ main ]
 
 jobs:
-  unit-tests:
-    name: Unit Tests
+  build-and-test:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Cache Python dependencies
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.VENV_NAME }}
-        key: ${{ runner.os }}-venv-${{ hashFiles('requirements*.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-venv-
-    
-    - name: Install dependencies
-      run: |
-        python -m venv ${{ env.VENV_NAME }}
-        source ${{ env.VENV_NAME }}/bin/activate
-        pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        # Always install test dependencies
-        pip install pytest pytest-cov coverage instructor openai pydantic
-    
-    - name: Run unit tests with Makefile
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        make test
-    
-    - name: Run test coverage
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        if command -v coverage > /dev/null 2>&1; then
-          pip install coverage
-          make coverage
-        else
-          echo "Coverage not installed, skipping coverage report"
-        fi
-  
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: unit-tests  # Run unit tests first
-    # Only run integration tests when API key is available
-    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run integration]') }}
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Install dependencies
-      run: |
-        python -m venv ${{ env.VENV_NAME }}
-        source ${{ env.VENV_NAME }}/bin/activate
-        pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install instructor openai pydantic
-    
-    - name: Run integration tests (requires API key)
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        if [ -n "$OPENAI_API_KEY" ]; then
-          echo "Running integration tests with OpenAI API..."
-          make test-integration || {
-            echo "Integration tests may have failed - check if API key is valid"
-            # Don't fail the workflow for temporary API issues
-            exit 0
-          }
-        else
-          echo "Skipping integration tests - OPENAI_API_KEY not set in GitHub Secrets"
-          echo "To run integration tests, add OPENAI_API_KEY to repository secrets"
-          echo "and trigger workflow manually or include '[run integration]' in commit message"
-        fi
-  
-  lint-check:
-    name: Lint Check
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Install linting tools
-      run: |
-        python -m venv ${{ env.VENV_NAME }}
-        source ${{ env.VENV_NAME }}/bin/activate
-        pip install black flake8 isort
-    
-    - name: Check code formatting with black
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        black --check --diff prompt_core/ tests/ || {
-          echo "Code formatting issues found. Run 'black prompt_core/ tests/' to fix."
-          exit 1
-        }
-    
-    - name: Lint with flake8
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        flake8 prompt_core/ tests/ --max-line-length=88 --extend-ignore=E203,W503
-    
-    - name: Check imports with isort
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        isort --check-only --diff prompt_core/ tests/ || {
-          echo "Import ordering issues found. Run 'isort prompt_core/ tests/' to fix."
-          exit 1
-        }
-
-  test-matrix:
-    name: Test Matrix (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-    
-    - name: Install dependencies
-      run: |
-        python -m venv ${{ env.VENV_NAME }}
-        source ${{ env.VENV_NAME }}/bin/activate
-        pip install --upgrade pip
-        pip install instructor openai pydantic pytest
-    
-    - name: Run basic tests
-      run: |
-        source ${{ env.VENV_NAME }}/bin/activate
-        python test_basic.py
+      - uses: actions/checkout@v4
+      
+      - name: Setup and install dependencies
+        run: make setup
+      
+      - name: Lint
+        run: make lint
+      
+      - name: Unit tests
+        run: make test
+      
+      - name: Evaluation tests
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: make evals

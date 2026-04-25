@@ -1,5 +1,5 @@
 # Makefile for prompt-core test automation
-.PHONY: help test evals test-unit test-all coverage lint clean
+.PHONY: help setup test evals test-unit test-all coverage lint clean
 
 # Variables
 PYTHON := .venv/bin/python
@@ -13,18 +13,25 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
-all: 
-	uv sync
 help:
 	@echo "Available commands:"
-	@echo "  ${GREEN}make${NC}          	 - Get project ready to run"
+	@echo "  ${GREEN}make${NC}          	 - Get project ready to run (setup + sync)"
+	@echo "  ${GREEN}make setup${NC}      - Install uv if not present"
 	@echo "  ${GREEN}make help${NC}          - Show this help message"
 	@echo "  ${GREEN}make test${NC}          - Run unit tests (no API key required)"
 	@echo "  ${GREEN}make evals${NC}        - Run evaluation tests with real API (requires API key)"
 	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + evals)"
 	@echo "  ${GREEN}make coverage${NC}      - Run tests with coverage report"
-	@echo "  ${GREEN}make lint${NC}          - Run code linting (if available)"
+	@echo "  ${GREEN}make lint${NC}          - Run code linting"
 	@echo "  ${GREEN}make clean${NC}         - Clean up generated files"
+
+# Setup: Install uv if not present, then sync dependencies
+setup:
+	@if ! command -v uv &> /dev/null; then \
+		echo "Installing uv..."; \
+		curl -LsSf https://astral.sh/uv/install.sh | sh; \
+	fi
+	@uv sync --all-extras
 
 test: test-unit
 
@@ -43,9 +50,9 @@ coverage:
 	@${COVERAGE} html
 	@echo "${GREEN}Coverage report generated: htmlcov/index.html${NC}"
 
-# Linting (if you have flake8, black, or other linters)
+# Linting with black
 lint:
-	.venv/bin/black --check prompt_core/ tests/; 
+	.venv/bin/black --check --target-version py312 prompt_core/ tests/
 
 # Clean up generated files
 clean:

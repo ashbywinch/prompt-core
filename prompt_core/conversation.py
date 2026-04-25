@@ -4,11 +4,12 @@ from pydantic import BaseModel, Field, model_validator
 
 class ConversationAction(BaseModel):
     """LLM's decision about conversation flow with discriminator field."""
+
     action: Literal["continue", "success", "failure"]
     message: Optional[str] = None  # Required for "continue" and "failure" actions
     criteria: Optional["EvaluationCriteria"] = None  # Required for "success" action
-    
-    @model_validator(mode='after')
+
+    @model_validator(mode="after")
     def validate_action_consistency(self):
         """Validate that the correct fields are provided based on action."""
         if self.action in ["continue", "failure"] and not self.message:
@@ -20,18 +21,23 @@ class ConversationAction(BaseModel):
 
 class ConversationResult(BaseModel):
     """Result of a conversation turn."""
+
     criteria: Optional["EvaluationCriteria"] = None
     message: str  # Message to show user
     is_complete: bool  # True if conversation ended (success or failure)
-    
+
     @classmethod
     def continuing(cls, message: str) -> "ConversationResult":
         return cls(criteria=None, message=message, is_complete=False)
-    
+
     @classmethod
     def success(cls, criteria: "EvaluationCriteria") -> "ConversationResult":
-        return cls(criteria=criteria, message="Criteria generated successfully!", is_complete=True)
-    
+        return cls(
+            criteria=criteria,
+            message="Criteria generated successfully!",
+            is_complete=True,
+        )
+
     @classmethod
     def failure(cls, message: str) -> "ConversationResult":
         return cls(criteria=None, message=f"Failed: {message}", is_complete=True)
@@ -39,16 +45,18 @@ class ConversationResult(BaseModel):
 
 class ConversationOrchestrator:
     """Manages conversation state and LLM interactions for criteria generation."""
-    
-    def __init__(self, initial_context: str = "", max_turns: int = 10, model: str = None):
+
+    def __init__(
+        self, initial_context: str = "", max_turns: int = 10, model: str = None
+    ):
         from .config import config
-        
+
         self.messages = []
         self.turn_count = 0
         self.max_turns = max_turns
         # Use provided model or fall back to config
         self.model = model or config.model
-        
+
         # System prompt - focus on behavioral guidance, instructor handles schema
         system_prompt = f"""
         You are a helpful assistant that guides users through a structured conversation to produce the specified output.
@@ -107,20 +115,22 @@ class ConversationOrchestrator:
         - Follow the structured response format provided
         - You MUST include a criterion named exactly "budget" (case-insensitive) in the criteria list
         """
-        
+
         self.messages.append({"role": "system", "content": system_prompt})
-        
+
         if initial_context:
-            self.messages.append({
-                "role": "user", 
-                "content": f"I'd like to create evaluation criteria for: {initial_context}"
-            })
-    
+            self.messages.append(
+                {
+                    "role": "user",
+                    "content": f"I'd like to create evaluation criteria for: {initial_context}",
+                }
+            )
+
     def process_turn(self, user_input: str) -> ConversationResult:
         """
         Process one conversation turn.
         Returns: ConversationResult object with outcome
-        
+
         Logic:
         1. Check turn limit (max 10) - raise ValueError if exceeded
         2. Add user message to history
@@ -134,21 +144,22 @@ class ConversationOrchestrator:
         # Check turn limit
         if self.turn_count >= self.max_turns:
             from .exceptions import TurnLimitExceededError
+
             raise TurnLimitExceededError(self.max_turns)
-        
+
         # Add user message to history
         if user_input.strip():
             self.messages.append({"role": "user", "content": user_input})
-        
+
         self.turn_count += 1
-        
+
         # Call LLM - exceptions will propagate
         action = self._call_llm()
-        
+
         # Add assistant message to history if needed
         if action.message:
             self.messages.append({"role": "assistant", "content": action.message})
-        
+
         # Handle action
         if action.action == "continue":
             return ConversationResult.continuing(action.message)
@@ -156,25 +167,27 @@ class ConversationOrchestrator:
             return ConversationResult.success(action.criteria)
         elif action.action == "failure":
             from .exceptions import ConversationFailedError
+
             raise ConversationFailedError(action.message)
         else:
             # Should not happen due to Literal type
             from .exceptions import InvalidResponseError
+
             raise InvalidResponseError(f"Invalid action received: {action.action}")
-    
+
     def _call_llm(self) -> ConversationAction:
         """Call LLM using instructor with multi-provider support."""
         from .llm_interaction import get_client
         from .config import config
         from .exceptions import ProviderNotFoundError
-        
+
         try:
             client = get_client()
             return client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,
                 response_model=ConversationAction,
-                max_retries=config.max_retries
+                max_retries=config.max_retries,
             )
         except ImportError as e:
             # If no providers are available, give helpful error
@@ -182,10 +195,6 @@ class ConversationOrchestrator:
                 f"No LLM providers available. {e}\n"
                 "Install litellm for multi-provider LLM support: uv add litellm"
             )
-    
-    
-    
-    
 
 
 # Import here to avoid circular import
