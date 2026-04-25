@@ -1,8 +1,0 @@
-{
-  "llm": {
-    "provider": "openrouter",
-    "model": "openrouter/xiaomi/mimo-v2-flash",
-    "temperature": 0.7,
-    "max_retries": 3
-  }
-}
