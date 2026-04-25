@@ -8,7 +8,7 @@ Run with: make evals
 
 import unittest
 
-from prompt_core.models import EvaluationCriteria, Criterion
+from prompt_core.models import EvaluationCriteria
 from prompt_core.conversation import ConversationOrchestrator, ConversationResult
 
 

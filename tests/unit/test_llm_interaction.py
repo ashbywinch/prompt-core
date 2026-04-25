@@ -7,7 +7,7 @@ that would be difficult to test with real API calls.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 
 from prompt_core.conversation import ConversationOrchestrator, ConversationAction
 
@@ -103,7 +103,7 @@ class TestLLMInteraction(unittest.TestCase):
             {"role": "user", "content": "Test user message"},
         ]
 
-        action = self.orchestrator._call_llm()
+        self.orchestrator._call_llm()
 
         # Verify call parameters
         self.assertEqual(mock_client.call_count, 1)

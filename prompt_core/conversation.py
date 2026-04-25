@@ -1,5 +1,9 @@
-from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, model_validator
+from __future__ import annotations
+
+from typing import Literal, Optional
+
+from pydantic import BaseModel, model_validator
+from .models import EvaluationCriteria
 
 
 class ConversationAction(BaseModel):
@@ -46,16 +50,13 @@ class ConversationResult(BaseModel):
 class ConversationOrchestrator:
     """Manages conversation state and LLM interactions for criteria generation."""
 
-    def __init__(
-        self, initial_context: str = "", max_turns: int = 10, model: str = None
-    ):
+    def __init__(self, initial_context: str = "", max_turns: int = 10):
         from .config import config
 
         self.messages = []
         self.turn_count = 0
         self.max_turns = max_turns
-        # Use provided model or fall back to config
-        self.model = model or config.model
+        self.model = config.model
 
         # System prompt - focus on behavioral guidance, instructor handles schema
         system_prompt = f"""
@@ -177,9 +178,9 @@ class ConversationOrchestrator:
 
     def _call_llm(self) -> ConversationAction:
         """Call LLM using instructor with multi-provider support."""
-        from .llm_interaction import get_client
         from .config import config
         from .exceptions import ProviderNotFoundError
+        from .llm_interaction import get_client
 
         try:
             client = get_client()
@@ -196,9 +197,6 @@ class ConversationOrchestrator:
                 "Install litellm for multi-provider LLM support: uv add litellm"
             )
 
-
-# Import here to avoid circular import
-from .models import EvaluationCriteria
 
 # Update forward references
 ConversationAction.model_rebuild()

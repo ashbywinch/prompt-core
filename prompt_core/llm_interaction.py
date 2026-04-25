@@ -3,15 +3,15 @@ Main LLM interaction module with multi-provider support using instructor and lit
 """
 
 import os
-from typing import Optional, Literal
+from typing import Literal, Optional
+
 from dotenv import load_dotenv
 
 from .exceptions import (
-    ConfigurationError,
     APIKeyError,
-    ProviderNotSupportedError,
+    ConfigurationError,
     ProviderNotFoundError,
-    InvalidResponseError,
+    ProviderNotSupportedError,
 )
 from .models import EvaluationCriteria
 
@@ -21,6 +21,12 @@ load_dotenv()
 try:
     import instructor
     from litellm import completion
+    import litellm
+
+    # Suppress litellm's noisy "Provider List" debug output that fires in
+    # the logging success handler for model names not in its registry
+    # (e.g. openrouter/xiaomi/mimo-v2-flash). The errors are caught internally.
+    litellm.suppress_debug_info = True
 
     LITELLM_AVAILABLE = True
 except ImportError:
@@ -53,13 +59,6 @@ def get_client(provider: Optional[ProviderType] = None):
         ProviderNotSupportedError: If provider is not supported
         ProviderNotFoundError: If litellm is not installed
     """
-    from .exceptions import (
-        ConfigurationError,
-        APIKeyError,
-        ProviderNotSupportedError,
-        ProviderNotFoundError,
-    )
-
     if not LITELLM_AVAILABLE:
         raise ProviderNotFoundError(
             "litellm not installed. Install with: uv add litellm\n"
@@ -112,11 +111,11 @@ def get_client(provider: Optional[ProviderType] = None):
             f"Supported providers: {', '.join(provider_config.keys())}"
         )
 
-    config = provider_config[provider]
-    api_key = os.getenv(config["api_key_env"])
+    cfg = provider_config[provider]
+    api_key = os.getenv(cfg["api_key_env"])
 
     if not api_key:
-        raise APIKeyError(config["error_msg"])
+        raise APIKeyError(cfg["error_msg"])
 
     # Create litellm client with instructor patch
     # Use JSON mode for better compatibility with OpenRouter models
@@ -125,7 +124,6 @@ def get_client(provider: Optional[ProviderType] = None):
 
 def generate_evaluation_criteria(
     context: str = "birthday presents for a child",
-    model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_retries: Optional[int] = None,
 ) -> EvaluationCriteria:
@@ -134,7 +132,6 @@ def generate_evaluation_criteria(
 
     Args:
         context: The context for evaluation (e.g., "birthday presents for a 7-year-old")
-        model: The model to use (defaults to configured model)
         temperature: Sampling temperature (0.0 to 2.0, defaults to configured temperature)
         max_retries: Maximum number of retry attempts (defaults to configured max_retries)
 
@@ -146,7 +143,7 @@ def generate_evaluation_criteria(
     client = get_client()
 
     # Use provided values or fall back to config
-    model = model or config.model
+    model = config.model
     temperature = temperature or config.temperature
     max_retries = max_retries or config.max_retries
 
@@ -186,7 +183,6 @@ def generate_evaluation_criteria(
 
 def chat_with_llm(
     user_message: str,
-    model: Optional[str] = None,
     temperature: Optional[float] = None,
     system_prompt: Optional[str] = None,
 ) -> str:
@@ -195,7 +191,6 @@ def chat_with_llm(
 
     Args:
         user_message: The user's message
-        model: The model to use (defaults to configured model)
         temperature: Sampling temperature (0.0 to 2.0, defaults to configured temperature)
         system_prompt: Optional system prompt
 
@@ -207,7 +202,7 @@ def chat_with_llm(
     client = get_client()
 
     # Use provided values or fall back to config
-    model = model or config.model
+    model = config.model
     temperature = temperature or config.temperature
 
     messages = []

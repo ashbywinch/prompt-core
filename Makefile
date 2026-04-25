@@ -1,5 +1,5 @@
 # Makefile for prompt-core test automation
-.PHONY: help setup test evals test-unit test-all coverage lint clean
+.PHONY: help setup test evals test-unit test-all coverage lint format clean
 
 # Variables
 PYTHON := .venv/bin/python
@@ -22,7 +22,8 @@ help:
 	@echo "  ${GREEN}make evals${NC}        - Run evaluation tests with real API (requires API key)"
 	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + evals)"
 	@echo "  ${GREEN}make coverage${NC}      - Run tests with coverage report"
-	@echo "  ${GREEN}make lint${NC}          - Run code linting"
+	@echo "  ${GREEN}make lint${NC}          - Run code linting (black + ruff)"
+	@echo "  ${GREEN}make format${NC}        - Auto-fix linting issues"
 	@echo "  ${GREEN}make clean${NC}         - Clean up generated files"
 
 # Setup: Install uv if not present, then sync dependencies
@@ -30,12 +31,12 @@ setup:
 	@uv --version >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
 	@uv sync --all-extras
 
-test: setup test-unit
+test: setup lint test-unit
 
 test-unit: setup
 	@${UNITTEST} discover tests/unit/ -v
 
-evals: setup
+evals: setup lint
 	@${UNITTEST} discover tests/evals/ -v
 
 test-all: test-unit evals
@@ -47,9 +48,15 @@ coverage: setup
 	@${COVERAGE} html
 	@echo "${GREEN}Coverage report generated: htmlcov/index.html${NC}"
 
-# Linting with black
+# Linting with black and ruff
 lint: setup
 	.venv/bin/black --check --target-version py312 prompt_core/ tests/
+	.venv/bin/ruff check prompt_core/ tests/
+
+# Auto-fix linting issues
+format: setup
+	.venv/bin/black --target-version py312 prompt_core/ tests/
+	.venv/bin/ruff check --fix prompt_core/ tests/
 
 # Clean up generated files
 clean:
