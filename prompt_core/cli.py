@@ -3,23 +3,24 @@
 CLI interface for prompt-core.
 """
 
-import typer
 import json
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
-from . import generate_evaluation_criteria, chat_with_llm, EvaluationCriteria
+import typer
+
+from . import EvaluationCriteria, chat_with_llm, generate_evaluation_criteria
 from .conversation import ConversationOrchestrator
 from .exceptions import (
-    PromptCoreError,
-    ConfigurationError,
-    ConfigFileError,
     APIKeyError,
-    ProviderNotSupportedError,
-    ProviderNotFoundError,
-    TurnLimitExceededError,
+    ConfigFileError,
+    ConfigurationError,
     ConversationFailedError,
     CriteriaValidationError,
+    PromptCoreError,
+    ProviderNotFoundError,
+    ProviderNotSupportedError,
+    TurnLimitExceededError,
 )
 
 app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
@@ -28,39 +29,39 @@ app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
 def handle_error(error: Exception):
     """Handle errors with user-friendly messages."""
     if isinstance(error, ConfigFileError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Configuration file error: {error.message}",
             err=True,
             fg=typer.colors.RED,
         )
     elif isinstance(error, ConfigurationError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Configuration error: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, APIKeyError):
-        typer.echo(f"\n✗ API key error: {error.message}", err=True, fg=typer.colors.RED)
+        typer.secho(f"\n✗ API key error: {error.message}", err=True, fg=typer.colors.RED)
     elif isinstance(error, ProviderNotSupportedError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Provider error: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, ProviderNotFoundError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Provider not found: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, TurnLimitExceededError):
-        typer.echo(f"\n✗ {error.message}", err=True, fg=typer.colors.RED)
+        typer.secho(f"\n✗ {error.message}", err=True, fg=typer.colors.RED)
     elif isinstance(error, ConversationFailedError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Conversation failed: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, CriteriaValidationError):
-        typer.echo(
+        typer.secho(
             f"\n✗ Validation error: {error.message}", err=True, fg=typer.colors.RED
         )
     elif isinstance(error, PromptCoreError):
-        typer.echo(f"\n✗ Error: {error.message}", err=True, fg=typer.colors.RED)
+        typer.secho(f"\n✗ Error: {error.message}", err=True, fg=typer.colors.RED)
     else:
-        typer.echo(
+        typer.secho(
             f"\n✗ Unexpected error: {str(error)[:200]}", err=True, fg=typer.colors.RED
         )
     raise typer.Exit(1)
@@ -77,7 +78,6 @@ def generate(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output JSON file path (optional)"
     ),
-    model: str = typer.Option("gpt-4o", "--model", "-m", help="OpenAI model to use"),
     temperature: float = typer.Option(
         0.7,
         "--temperature",
@@ -93,9 +93,7 @@ def generate(
     typer.echo(f"Generating evaluation criteria for: {context}")
 
     try:
-        criteria = generate_evaluation_criteria(
-            context=context, model=model, temperature=temperature
-        )
+        criteria = generate_evaluation_criteria(context=context, temperature=temperature)
 
         typer.echo(f"\n✓ Generated {len(criteria.criteria)} criteria")
         typer.echo(f"Context: {criteria.context}")
@@ -127,7 +125,6 @@ def generate(
 @app.command()
 def chat(
     message: str = typer.Argument(..., help="Your message to the LLM"),
-    model: str = typer.Option("gpt-4o", "--model", "-m", help="OpenAI model to use"),
     temperature: float = typer.Option(
         0.7,
         "--temperature",
@@ -146,7 +143,6 @@ def chat(
     try:
         response = chat_with_llm(
             user_message=message,
-            model=model,
             temperature=temperature,
             system_prompt=system_prompt,
         )
@@ -176,8 +172,7 @@ def validate(
         typer.echo(f"Number of criteria: {len(criteria.criteria)}")
 
     except Exception as e:
-        typer.echo(f"✗ Validation failed: {e}", err=True)
-        raise typer.Exit(1)
+        handle_error(e)
 
 
 @app.command()
@@ -187,9 +182,6 @@ def converse(
     ),
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Save successful criteria to JSON file"
-    ),
-    model: str = typer.Option(
-        "gpt-4o-mini", "--model", "-m", help="Model to use for conversation"
     ),
     max_turns: int = typer.Option(
         10,
@@ -206,13 +198,11 @@ def converse(
     Example:
     prompt-core converse --context "birthday presents for child"
     """
-    typer.echo(
-        f"Starting conversation using {model}... (Ctrl+C to quit, max {max_turns} turns)"
-    )
+    typer.echo(f"Starting conversation... (Ctrl+C to quit, max {max_turns} turns)")
 
     try:
         orchestrator = ConversationOrchestrator(
-            initial_context=context, max_turns=max_turns, model=model
+            initial_context=context, max_turns=max_turns
         )
 
         # Start conversation
