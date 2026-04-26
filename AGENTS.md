@@ -37,18 +37,17 @@ make lint           # black --check + ruff check
 
 ## Prompt Design Rules
 
-1. NEVER mention Pydantic class names or field types in prompts.
+1. NEVER mention Pydantic class names, field types or validation rules in prompts.
 2. DO give behavioral examples and conversation strategies.
 3. ALWAYS use f-strings for turn limits (`{self.max_turns}`), never hardcode.
 4. FOCUS on "what to do", not "what not to do".
-5. MUST include instruction: "You MUST include a criterion named exactly 'budget' (case-insensitive)"
 
 ## Critical Patterns
 
+- All development must be done on a branch. origin/main is protected.
 - `ConversationAction` is a single discriminator model with `action: Literal["continue", "success", "failure"]`
 - `ConversationOrchestrator.process_turn()` checks turn limit, calls LLM, handles action
 - Turn limit raises `TurnLimitExceededError`; failure action raises `ConversationFailedError`
-- `_call_llm()` passes `timeout=config.request_timeout_seconds` to instructor (default: 30s)
 
 ## Reference Docs
 
