@@ -9,14 +9,13 @@ from typing import Optional
 
 import typer
 
-from . import EvaluationCriteria, chat_with_llm, generate_evaluation_criteria
 from .conversation import ConversationOrchestrator
 from .exceptions import (
     APIKeyError,
     ConfigFileError,
     ConfigurationError,
-    ConversationFailedError,
     CriteriaValidationError,
+    ConversationFailedError,
     PromptCoreError,
     ProviderNotFoundError,
     ProviderNotSupportedError,
@@ -67,116 +66,6 @@ def handle_error(error: Exception):
             f"\n✗ Unexpected error: {str(error)[:200]}", err=True, fg=typer.colors.RED
         )
     raise typer.Exit(1)
-
-
-@app.command()
-def generate(
-    context: str = typer.Option(
-        "birthday presents for a child",
-        "--context",
-        "-c",
-        help="Context for evaluation criteria",
-    ),
-    output: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Output JSON file path (optional)"
-    ),
-    temperature: float = typer.Option(
-        0.7,
-        "--temperature",
-        "-t",
-        help="Sampling temperature (0.0 to 2.0)",
-        min=0.0,
-        max=2.0,
-    ),
-):
-    """
-    Generate evaluation criteria for a given context.
-    """
-    typer.echo(f"Generating evaluation criteria for: {context}")
-
-    try:
-        criteria = generate_evaluation_criteria(
-            context=context, temperature=temperature
-        )
-
-        typer.echo(f"\n✓ Generated {len(criteria.criteria)} criteria")
-        typer.echo(f"Context: {criteria.context}")
-        typer.echo(f"Total weight: {criteria.total_weight():.2f}")
-
-        # Display criteria
-        for i, criterion in enumerate(criteria.criteria, 1):
-            typer.echo(f"\n{i}. {criterion.name} (weight: {criterion.weight})")
-            typer.echo(f"   Description: {criterion.description}")
-            if criterion.ideal_value:
-                typer.echo(f"   Ideal: {criterion.ideal_value}")
-
-        # Save to file if requested
-        if output:
-            with open(output, "w") as f:
-                json.dump(criteria.model_dump(), f, indent=2)
-            typer.echo(f"\n✓ Saved to {output}")
-
-        # Show normalized weights
-        typer.echo("\nNormalized weights (sum to 1.0):")
-        normalized = criteria.normalized_weights()
-        for criterion, weight in zip(criteria.criteria, normalized):
-            typer.echo(f"  {criterion.name}: {weight:.3f}")
-
-    except Exception as e:
-        handle_error(e)
-
-
-@app.command()
-def chat(
-    message: str = typer.Argument(..., help="Your message to the LLM"),
-    temperature: float = typer.Option(
-        0.7,
-        "--temperature",
-        "-t",
-        help="Sampling temperature (0.0 to 2.0)",
-        min=0.0,
-        max=2.0,
-    ),
-    system_prompt: Optional[str] = typer.Option(
-        None, "--system-prompt", "-s", help="System prompt for the LLM"
-    ),
-):
-    """
-    Chat with the LLM about evaluation criteria.
-    """
-    try:
-        response = chat_with_llm(
-            user_message=message,
-            temperature=temperature,
-            system_prompt=system_prompt,
-        )
-        typer.echo(response)
-
-    except Exception as e:
-        handle_error(e)
-
-
-@app.command()
-def validate(
-    file: Path = typer.Argument(
-        ..., help="JSON file containing evaluation criteria", exists=True
-    )
-):
-    """
-    Validate a JSON file against the EvaluationCriteria schema.
-    """
-    try:
-        with open(file, "r") as f:
-            data = json.load(f)
-
-        # Validate by creating the model
-        criteria = EvaluationCriteria(**data)
-        typer.echo("✓ Valid EvaluationCriteria object")
-        typer.echo(f"Context: {criteria.context}")
-        typer.echo(f"Number of criteria: {len(criteria.criteria)}")
-
-    except Exception as e:
-        handle_error(e)
 
 
 @app.command()
@@ -270,5 +159,10 @@ def converse(
         handle_error(e)
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the CLI application."""
     app()
+
+
+if __name__ == "__main__":
+    main()

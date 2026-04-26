@@ -166,6 +166,7 @@ def generate_evaluation_criteria(
         model=model,
         temperature=temperature,
         max_retries=max_retries,
+        timeout=config.request_timeout_seconds,
         messages=[
             {
                 "role": "system",
@@ -179,44 +180,6 @@ def generate_evaluation_criteria(
     # Set the context on the returned object
     criteria.context = context
     return criteria
-
-
-def chat_with_llm(
-    user_message: str,
-    temperature: Optional[float] = None,
-    system_prompt: Optional[str] = None,
-) -> str:
-    """
-    Simple chat interface with LLM.
-
-    Args:
-        user_message: The user's message
-        temperature: Sampling temperature (0.0 to 2.0, defaults to configured temperature)
-        system_prompt: Optional system prompt
-
-    Returns:
-        LLM response as string
-    """
-    from .config import config
-
-    client = get_client()
-
-    # Use provided values or fall back to config
-    model = config.model
-    temperature = temperature or config.temperature
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": user_message})
-
-    response = client.chat.completions.create(
-        model=model,
-        temperature=temperature,
-        messages=messages,
-    )
-
-    return response.choices[0].message.content
 
 
 def list_available_providers() -> dict:

@@ -30,7 +30,13 @@ class Config:
         config_path = Path(__file__).parent.parent / "config.json"
 
         # Default configuration - no defaults for provider/model, they must be configured
-        self._config_data = {"llm": {"temperature": 0.7, "max_retries": 3}}
+        self._config_data = {
+            "llm": {
+                "temperature": 0.7,
+                "max_retries": 3,
+                "request_timeout_seconds": 30,
+            }
+        }
 
         # config.json MUST exist
         if not config_path.exists():
@@ -84,6 +90,11 @@ class Config:
     def max_retries(self) -> int:
         """Get the configured max retries."""
         return self._config_data["llm"]["max_retries"]
+
+    @property
+    def request_timeout_seconds(self) -> float:
+        """Get the configured timeout for each LLM request."""
+        return self._config_data["llm"]["request_timeout_seconds"]
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by dot-separated key."""

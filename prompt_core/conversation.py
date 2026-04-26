@@ -189,6 +189,7 @@ class ConversationOrchestrator:
                 messages=self.messages,
                 response_model=ConversationAction,
                 max_retries=config.max_retries,
+                timeout=config.request_timeout_seconds,
             )
         except ImportError as e:
             # If no providers are available, give helpful error
