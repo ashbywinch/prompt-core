@@ -1,5 +1,5 @@
 # Makefile for prompt-core test automation
-.PHONY: help setup test evals test-unit test-all coverage lint format clean
+.PHONY: help setup test test-verbose evals evals-verbose test-unit test-all coverage lint format clean
 
 # Variables
 PYTHON := .venv/bin/python
@@ -19,8 +19,10 @@ help:
 	@echo "  ${GREEN}make setup${NC}      - Install uv if not present"
 	@echo "  ${GREEN}make help${NC}          - Show this help message"
 	@echo "  ${GREEN}make test${NC}          - Run unit tests (no API key required)"
+	@echo "  ${GREEN}make test-verbose${NC}  - Run unit tests with verbose output"
 	@echo "  ${GREEN}make evals${NC}        - Run evaluation tests with real API (requires API key)"
-	@echo "  ${GREEN}make test-all${NC}      - Run ALL tests (unit + evals)"
+	@echo "  ${GREEN}make evals-verbose${NC} - Run evaluation tests with verbose output"
+	@echo "  ${GREEN}make test-all${NC}      - Run unit tests + evals"
 	@echo "  ${GREEN}make coverage${NC}      - Run tests with coverage report"
 	@echo "  ${GREEN}make lint${NC}          - Run code linting (black + ruff)"
 	@echo "  ${GREEN}make format${NC}        - Auto-fix linting issues"
@@ -34,12 +36,18 @@ setup:
 test: setup lint test-unit
 
 test-unit: setup
+	@${UNITTEST} discover tests/unit/
+
+test-verbose: setup lint
 	@${UNITTEST} discover tests/unit/ -v
 
 evals: setup lint
-	@${UNITTEST} discover tests/evals/ -v
+	@${PYTHON} scripts/run_with_timeout.py --timeout 300 -- ${UNITTEST} discover tests/evals/
 
-test-all: test-unit evals
+evals-verbose: setup lint
+	@${PYTHON} scripts/run_with_timeout.py --timeout 300 -- ${UNITTEST} discover tests/evals/ -v
+
+test-all: test evals
 
 # Test with coverage (requires coverage package)
 coverage: setup
@@ -66,4 +74,3 @@ clean:
 	@rm -f test-results.xml
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name "*.pyc" -delete
-
