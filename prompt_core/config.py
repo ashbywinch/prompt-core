@@ -35,6 +35,7 @@ class Config:
                 "temperature": 0.7,
                 "max_retries": 3,
                 "request_timeout_seconds": 30,
+                "model_supports_tools": False,
             }
         }
 
@@ -95,6 +96,11 @@ class Config:
     def request_timeout_seconds(self) -> float:
         """Get the configured timeout for each LLM request."""
         return self._config_data["llm"]["request_timeout_seconds"]
+
+    @property
+    def model_supports_tools(self) -> bool:
+        """Whether the configured model supports tool/function calling."""
+        return self._config_data["llm"].get("model_supports_tools", False)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by dot-separated key."""
