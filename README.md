@@ -17,7 +17,7 @@ Built with **Pydantic** (data models + business rules), **Instructor** (structur
 git clone <repo> && cd prompt-core && make
 
 # 2. Configure
-cp config.json.example config.json    # edit provider + model
+# edit config.json to set your provider + model
 export OPENROUTER_API_KEY=your-key    # or OPENAI_API_KEY, etc.
 
 # 3. Run

@@ -42,13 +42,18 @@ ProviderType = Literal[
 ]
 
 
-def get_client(provider: Optional[ProviderType] = None):
+def get_client(
+    provider: Optional[ProviderType] = None,
+    supports_tools: bool = False,
+):
     """
     Get LLM client for the specified provider.
 
     Args:
         provider: One of "openai", "google", "anthropic", "groq", "together", "azure", "openrouter"
                  If None, uses provider from config
+        supports_tools: Whether the model supports tool/function calling.
+                       If True, uses Mode.TOOLS; otherwise Mode.JSON.
 
     Returns:
         Instructor-patched client for the specified provider
@@ -118,8 +123,9 @@ def get_client(provider: Optional[ProviderType] = None):
         raise APIKeyError(cfg["error_msg"])
 
     # Create litellm client with instructor patch
-    # Use JSON mode for better compatibility with OpenRouter models
-    return instructor.from_litellm(completion, mode=instructor.Mode.JSON)
+    # Use TOOLS mode when model supports function calling, otherwise JSON mode
+    mode = instructor.Mode.TOOLS if supports_tools else instructor.Mode.JSON
+    return instructor.from_litellm(completion, mode=mode)
 
 
 def generate_evaluation_criteria(

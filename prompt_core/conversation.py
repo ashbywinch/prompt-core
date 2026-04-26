@@ -183,7 +183,7 @@ class ConversationOrchestrator:
         from .llm_interaction import get_client
 
         try:
-            client = get_client()
+            client = get_client(supports_tools=config.model_supports_tools)
             return client.chat.completions.create(
                 model=self.model,
                 messages=self.messages,

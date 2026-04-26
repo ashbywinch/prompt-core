@@ -35,7 +35,7 @@ prompt_core/llm_interaction_multi.py:97  # get_client() - provider setup
 ## Configuration
 ```bash
 # 1. Copy config template
-cp config.json.example config.json
+# Edit config.json to set provider/model
 
 # 2. Edit config.json to set provider/model
 # 3. Set API key environment variable matching provider
