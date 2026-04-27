@@ -35,6 +35,30 @@ make evals-verbose  # Same with verbose output
 make lint           # black --check + ruff check
 ```
 
+## Git Workflow
+
+```bash
+# Start new work
+git checkout main && git pull origin main && git checkout -b <branch>
+
+# Commit and push
+git add -A && git commit -m "message" && git push -u origin <branch>
+
+# Create PR
+gh pr create --base main --head <branch> --title "..."
+```
+
+**After creating a PR:** Stop. The PR is open. Wait for the user to merge it or tell you what to do next. Do not push more commits unless asked.
+
+**When starting fresh (new session, no context about previous work):**
+1. `git checkout main && git pull origin main` — get latest main
+2. `git branch -d <last-branch>` — delete the previous branch (safe: `-d` refuses if it has unmerged work)
+3. `git checkout -b <new-branch>` — create the new branch
+
+**Rules:**
+- Start every new piece of work from a fresh branch off main. Never reuse a branch whose PR has been merged.
+- If your PR is open but not yet merged: wait or ask. Don't push more commits without confirmation.
+
 ## Prompt Design Rules
 
 1. NEVER mention Pydantic class names, field types or validation rules in prompts.
