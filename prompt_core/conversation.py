@@ -5,7 +5,6 @@ from typing import Any, Literal, Optional
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, model_validator
-from .models import EvaluationCriteria
 
 
 @dataclass
@@ -25,7 +24,7 @@ class Message:
 class LLMResponse:
     """Wraps a parsed LLM response with metadata."""
 
-    content: Any  # The parsed Pydantic model
+    content: ConversationAction  # The parsed ConversationAction
     model: str = ""
     usage: dict[str, Any] | None = None
     cost: float | None = None
@@ -36,7 +35,7 @@ class ConversationAction(BaseModel):
 
     action: Literal["continue", "success", "failure"]
     message: Optional[str] = None  # Required for "continue" and "failure" actions
-    criteria: Optional["EvaluationCriteria"] = None  # Required for "success" action
+    criteria: Optional[BaseModel] = None  # Required for "success" action
 
     @model_validator(mode="after")
     def validate_action_consistency(self):
@@ -51,7 +50,7 @@ class ConversationAction(BaseModel):
 class ConversationResult(BaseModel):
     """Result of a conversation turn."""
 
-    criteria: Optional["EvaluationCriteria"] = None
+    criteria: Optional[BaseModel] = None
     message: str  # Message to show user
     is_complete: bool  # True if conversation ended (success or failure)
 
@@ -60,7 +59,7 @@ class ConversationResult(BaseModel):
         return cls(criteria=None, message=message, is_complete=False)
 
     @classmethod
-    def success(cls, criteria: "EvaluationCriteria") -> "ConversationResult":
+    def success(cls, criteria: BaseModel) -> "ConversationResult":
         return cls(
             criteria=criteria,
             message="Criteria generated successfully!",
@@ -202,18 +201,11 @@ class ConversationOrchestrator:
 
             raise InvalidResponseError(f"Invalid action received: {action.action}")
 
-    def _call_llm(
-        self,
-        response_model: type = ConversationAction,
-    ) -> LLMResponse:
+    def _call_llm(self) -> LLMResponse:
         """Call LLM using instructor with multi-provider support.
 
-        Args:
-            response_model: Pydantic model class for structured output.
-                            Defaults to ConversationAction.
-
         Returns:
-            LLMResponse containing the parsed model and usage metadata.
+            LLMResponse containing the parsed ConversationAction and usage metadata.
         """
         import litellm
         from .config import config
@@ -227,7 +219,7 @@ class ConversationOrchestrator:
             parsed, raw_response = client.chat.completions.create_with_completion(
                 model=self.model,
                 messages=[m.to_dict() for m in self.messages],
-                response_model=response_model,
+                response_model=ConversationAction,
                 max_retries=config.max_retries,
                 timeout=config.request_timeout_seconds,
             )
