@@ -35,10 +35,15 @@ class TestRealAPI(unittest.TestCase):
         orchestrator = ConversationOrchestrator()
 
         # Call _call_llm - will use real provider
-        action = orchestrator._call_llm()
+        llm_response = orchestrator._call_llm()
+        action = llm_response.content
 
         # Verify we got a valid ConversationAction
         self.assertIn(action.action, ["continue", "success", "failure"])
+        # Verify usage metadata was captured
+        self.assertIsNotNone(
+            llm_response.usage, "LLMResponse should contain usage data"
+        )
 
         # If action is "continue" or "failure", it should have a message
         if action.action in ["continue", "failure"]:
@@ -64,39 +69,23 @@ class TestRealAPI(unittest.TestCase):
             initial_context="choosing a birthday gift", max_turns=3
         )
 
-        # First turn
-        result1 = orchestrator.process_turn("Hello, I need help choosing a gift")
+        result = orchestrator.run_conversation(
+            [
+                "Hello, I need help choosing a gift",
+                "Around $50 budget",
+                "For a 7-year-old who likes science",
+            ]
+        )
 
-        # Should get a response
-        self.assertIsNotNone(result1.message)
-
-        # If we get "continue", we can test another turn
-        if not result1.is_complete and result1.message:
-            # Second turn
-            result2 = orchestrator.process_turn("Around $50 budget")
-
-            self.assertIsNotNone(result2.message)
-
-            if not result2.is_complete:
-                # Third turn
-                result3 = orchestrator.process_turn(
-                    "For a 7-year-old who likes science"
-                )
-
-                self.assertIsNotNone(result3.message)
-
-        # Verify conversation state is consistent
-        self.assertEqual(orchestrator.turn_count, orchestrator.max_turns or 3)
+        self.assertIsNotNone(result.message)
+        self.assertLessEqual(orchestrator.turn_count, orchestrator.max_turns)
 
         # If we got criteria, verify it meets business rules
-        if (
-            result1.criteria
-            or (hasattr(result2, "criteria") and result2.criteria)
-            or (hasattr(result3, "criteria") and result3.criteria)
-        ):
-            criteria = result1.criteria or result2.criteria or result3.criteria
-            self.assertGreaterEqual(len(criteria.criteria), 2)
-            has_budget = any(c.name.lower() == "budget" for c in criteria.criteria)
+        if result.criteria:
+            self.assertGreaterEqual(len(result.criteria.criteria), 2)
+            has_budget = any(
+                c.name.lower() == "budget" for c in result.criteria.criteria
+            )
             self.assertTrue(has_budget, "Criteria should include 'budget'")
 
     def test_single_turn_with_real_llm(self):
@@ -132,49 +121,34 @@ class TestRealAPI(unittest.TestCase):
             initial_context="choosing a birthday gift for a 7-year-old", max_turns=10
         )
 
-        # Simulate a conversation that should produce criteria
-        conversation_steps = [
-            "",  # Start empty to let LLM ask first question
-            "My budget is around $50",
-            "They like building toys and science kits",
-            "Safety is important for a 7-year-old",
-            "Educational value would be good",
-            "That's all I can think of",
-        ]
-
-        last_result = None
-
-        for i, user_input in enumerate(conversation_steps):
-            result = orchestrator.process_turn(user_input)
-
-            if result.is_complete:
-                last_result = result
-                break
-
-        # The conversation should complete within the steps
-        self.assertTrue(
-            last_result is not None and last_result.is_complete,
-            f"Conversation did not complete within {len(conversation_steps)} steps.",
+        result = orchestrator.run_conversation(
+            [
+                "",
+                "My budget is around $50",
+                "They like building toys and science kits",
+                "Safety is important for a 7-year-old",
+                "Educational value would be good",
+                "That's all I can think of",
+            ]
         )
 
-        # If completed, it should be with success (not failure)
+        # The conversation completed with criteria (not failure)
         self.assertIsNotNone(
-            last_result.criteria,
-            f"Conversation completed but with failure: {last_result.message}",
+            result.criteria,
+            f"Conversation completed but with failure: {result.message}",
         )
 
         # Criteria should be valid EvaluationCriteria
-        self.assertIsInstance(last_result.criteria, EvaluationCriteria)
-        self.assertGreaterEqual(len(last_result.criteria.criteria), 2)
+        self.assertIsInstance(result.criteria, EvaluationCriteria)
+        self.assertGreaterEqual(len(result.criteria.criteria), 2)
 
         # Check for budget criterion (case-insensitive)
         budget_found = any(
-            "budget" in criterion.name.lower()
-            for criterion in last_result.criteria.criteria
+            "budget" in criterion.name.lower() for criterion in result.criteria.criteria
         )
         self.assertTrue(
             budget_found,
-            f"Criteria missing 'budget'. Found: {[c.name for c in last_result.criteria.criteria]}",
+            f"Criteria missing 'budget'. Found: {[c.name for c in result.criteria.criteria]}",
         )
 
     def test_uncooperative_user_max_turns(self):

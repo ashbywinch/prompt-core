@@ -1,9 +1,34 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, model_validator
 from .models import EvaluationCriteria
+
+
+@dataclass
+class Message:
+    """A single message in the conversation history."""
+
+    role: Literal["system", "user", "assistant"]
+    content: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a plain dict for LLM API calls."""
+        return {"role": self.role, "content": self.content}
+
+
+@dataclass
+class LLMResponse:
+    """Wraps a parsed LLM response with metadata."""
+
+    content: Any  # The parsed Pydantic model
+    model: str = ""
+    usage: dict[str, Any] | None = None
+    cost: float | None = None
 
 
 class ConversationAction(BaseModel):
@@ -53,7 +78,7 @@ class ConversationOrchestrator:
     def __init__(self, initial_context: str = "", max_turns: int = 10):
         from .config import config
 
-        self.messages = []
+        self.messages: list[Message] = []
         self.turn_count = 0
         self.max_turns = max_turns
         self.model = config.model
@@ -117,14 +142,14 @@ class ConversationOrchestrator:
         - You MUST include a criterion named exactly "budget" (case-insensitive) in the criteria list
         """
 
-        self.messages.append({"role": "system", "content": system_prompt})
+        self.messages.append(Message(role="system", content=system_prompt))
 
         if initial_context:
             self.messages.append(
-                {
-                    "role": "user",
-                    "content": f"I'd like to create evaluation criteria for: {initial_context}",
-                }
+                Message(
+                    role="user",
+                    content=f"I'd like to create evaluation criteria for: {initial_context}",
+                )
             )
 
     def process_turn(self, user_input: str) -> ConversationResult:
@@ -150,16 +175,17 @@ class ConversationOrchestrator:
 
         # Add user message to history
         if user_input.strip():
-            self.messages.append({"role": "user", "content": user_input})
+            self.messages.append(Message(role="user", content=user_input))
 
         self.turn_count += 1
 
         # Call LLM - exceptions will propagate
-        action = self._call_llm()
+        llm_response = self._call_llm()
+        action = llm_response.content
 
         # Add assistant message to history if needed
         if action.message:
-            self.messages.append({"role": "assistant", "content": action.message})
+            self.messages.append(Message(role="assistant", content=action.message))
 
         # Handle action
         if action.action == "continue":
@@ -176,20 +202,54 @@ class ConversationOrchestrator:
 
             raise InvalidResponseError(f"Invalid action received: {action.action}")
 
-    def _call_llm(self) -> ConversationAction:
-        """Call LLM using instructor with multi-provider support."""
+    def _call_llm(
+        self,
+        response_model: type = ConversationAction,
+    ) -> LLMResponse:
+        """Call LLM using instructor with multi-provider support.
+
+        Args:
+            response_model: Pydantic model class for structured output.
+                            Defaults to ConversationAction.
+
+        Returns:
+            LLMResponse containing the parsed model and usage metadata.
+        """
+        import litellm
         from .config import config
         from .exceptions import ProviderNotFoundError
         from .llm_interaction import get_client
 
         try:
             client = get_client(supports_tools=config.model_supports_tools)
-            return client.chat.completions.create(
+
+            # Use create_with_completion to capture the raw response with usage
+            parsed, raw_response = client.chat.completions.create_with_completion(
                 model=self.model,
-                messages=self.messages,
-                response_model=ConversationAction,
+                messages=[m.to_dict() for m in self.messages],
+                response_model=response_model,
                 max_retries=config.max_retries,
                 timeout=config.request_timeout_seconds,
+            )
+
+            usage = None
+            cost = None
+            if raw_response and raw_response.usage:
+                usage = (
+                    raw_response.usage.model_dump()
+                    if hasattr(raw_response.usage, "model_dump")
+                    else raw_response.usage
+                )
+                try:
+                    cost = litellm.completion_cost(completion_response=raw_response)
+                except Exception:
+                    cost = None
+
+            return LLMResponse(
+                content=parsed,
+                model=self.model,
+                usage=usage,
+                cost=cost,
             )
         except ImportError as e:
             # If no providers are available, give helpful error
@@ -197,6 +257,33 @@ class ConversationOrchestrator:
                 f"No LLM providers available. {e}\n"
                 "Install litellm for multi-provider LLM support: uv add litellm"
             )
+
+    def run_conversation(self, user_inputs: list[str]) -> ConversationResult:
+        """Run through a sequence of user inputs until the conversation completes.
+
+        Each input is processed as a separate turn. Returns the final
+        ConversationResult once the conversation ends (success, failure,
+        or turn limit). Raises if the conversation does not complete
+        within the available turns or the provided inputs.
+        """
+        from .exceptions import TurnLimitExceededError
+
+        for user_input in user_inputs:
+            try:
+                result = self.process_turn(user_input)
+            except TurnLimitExceededError:
+                raise TurnLimitExceededError(
+                    f"Conversation did not complete within {self.max_turns} turns "
+                    f"across {len(user_inputs)} provided inputs"
+                )
+
+            if result.is_complete:
+                return result
+
+        raise ValueError(
+            f"Conversation did not complete after {len(user_inputs)} inputs "
+            f"(max_turns={self.max_turns})"
+        )
 
 
 # Update forward references

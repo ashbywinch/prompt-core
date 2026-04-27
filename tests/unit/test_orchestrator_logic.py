@@ -11,6 +11,7 @@ from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import (
     ConversationOrchestrator,
     ConversationAction,
+    LLMResponse,
 )
 from prompt_core.exceptions import (
     ConversationFailedError,
@@ -48,10 +49,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         expected_model = config.model
         self.assertEqual(orchestrator.model, expected_model)
         self.assertEqual(len(orchestrator.messages), 2)  # system + user message
-        self.assertEqual(orchestrator.messages[0]["role"], "system")
-        self.assertIn(
-            "birthday presents for child", orchestrator.messages[1]["content"]
-        )
+        self.assertEqual(orchestrator.messages[0].role, "system")
+        self.assertIn("birthday presents for child", orchestrator.messages[1].content)
 
         # Test without initial context
         orchestrator = ConversationOrchestrator()
@@ -65,7 +64,7 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
         # Mock _call_llm to return success action
         action = ConversationAction(action="success", criteria=self.valid_criteria)
-        mock_call_llm.return_value = action
+        mock_call_llm.return_value = LLMResponse(content=action)
 
         # Process turn
         result = orchestrator.process_turn("Let's create criteria")
@@ -89,7 +88,7 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         action = ConversationAction(
             action="continue", message="What's your budget range?"
         )
-        mock_call_llm.return_value = action
+        mock_call_llm.return_value = LLMResponse(content=action)
 
         result = orchestrator.process_turn("Hello")
 
@@ -100,10 +99,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
         # Verify messages: system, user input, assistant message
         self.assertEqual(len(orchestrator.messages), 3)
-        self.assertEqual(orchestrator.messages[2]["role"], "assistant")
-        self.assertEqual(
-            orchestrator.messages[2]["content"], "What's your budget range?"
-        )
+        self.assertEqual(orchestrator.messages[2].role, "assistant")
+        self.assertEqual(orchestrator.messages[2].content, "What's your budget range?")
 
     @patch.object(ConversationOrchestrator, "_call_llm")
     def test_process_turn_failure_raises_exception(self, mock_call_llm):
@@ -114,7 +111,7 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         action = ConversationAction(
             action="failure", message="I don't have enough information to help"
         )
-        mock_call_llm.return_value = action
+        mock_call_llm.return_value = LLMResponse(content=action)
 
         # process_turn() should raise ConversationFailedError for failure action
         with self.assertRaises(ConversationFailedError) as context:
@@ -133,7 +130,7 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
         # Mock _call_llm to return continue action
         action = ConversationAction(action="continue", message="First question")
-        mock_call_llm.return_value = action
+        mock_call_llm.return_value = LLMResponse(content=action)
 
         # Empty input should still work
         result = orchestrator.process_turn("")
@@ -151,9 +148,17 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
         # Set up sequence of mock responses
         responses = [
-            ConversationAction(action="continue", message="Question 1"),
-            ConversationAction(action="continue", message="Question 2"),
-            ConversationAction(action="success", criteria=self.valid_criteria),
+            LLMResponse(
+                content=ConversationAction(action="continue", message="Question 1")
+            ),
+            LLMResponse(
+                content=ConversationAction(action="continue", message="Question 2")
+            ),
+            LLMResponse(
+                content=ConversationAction(
+                    action="success", criteria=self.valid_criteria
+                )
+            ),
         ]
         mock_call_llm.side_effect = responses
 
@@ -186,8 +191,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         orchestrator = ConversationOrchestrator(max_turns=2)
 
         # Mock always returns continue
-        mock_call_llm.return_value = ConversationAction(
-            action="continue", message="Another question"
+        mock_call_llm.return_value = LLMResponse(
+            content=ConversationAction(action="continue", message="Another question")
         )
 
         # First turn - OK
@@ -233,7 +238,7 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
         )
         mock_action.message = "test"
         mock_action.criteria = None
-        mock_call_llm.return_value = mock_action
+        mock_call_llm.return_value = LLMResponse(content=mock_action)
 
         # process_turn() should raise InvalidResponseError for invalid action
         with self.assertRaises(InvalidResponseError) as context:
@@ -249,8 +254,8 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
         # Simulate turns
         with patch.object(orchestrator, "_call_llm") as mock_call_llm:
-            mock_call_llm.return_value = ConversationAction(
-                action="continue", message="Test"
+            mock_call_llm.return_value = LLMResponse(
+                content=ConversationAction(action="continue", message="Test")
             )
 
             orchestrator.process_turn("Turn 1")
