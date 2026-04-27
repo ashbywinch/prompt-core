@@ -55,9 +55,37 @@ gh pr create --base main --head <branch> --title "..."
 2. `git branch -d <last-branch>` — delete the previous branch (safe: `-d` refuses if it has unmerged work)
 3. `git checkout -b <new-branch>` — create the new branch
 
+**When the user starts talking about more changes and a PR exists:**
+
+Check the PR state first, then act:
+
+1. `gh pr view --json state,headRefName --jq '[.state, .headRefName] | @tsv'`
+   - If state is **MERGED**: `git checkout main && git pull origin main && git branch -d <branch>` then start fresh.
+   - If state is **OPEN**: ask the user: "This PR is still open. Should I push more commits to the same branch, or would you like to merge it first and start fresh?"
+   - (If `gh pr view` fails with "no PR found", the PR was merged and the branch deleted from origin. Same as MERGED above.)
+
+**Before pushing to an existing PR:**
+
+1. Check CI status: `gh pr checks <number>`
+   - If failing: investigate the failure, fix it, THEN push
+   - Don't stack new commits on a broken PR without fixing the breakage
+
+2. Run ALL tests locally before pushing:
+   - `make test` (unit tests, fast)
+   - `make evals` (real API tests, requires API key, ~90s)
+
+3. If evals fail locally: fix them before pushing. CI will run evals again and fail the same way.
+
+4. After pushing, verify CI passes: `gh pr checks <number> --watch`
+
+**Never:**
+- Push changes that break tests (unit or eval) without fixing them first
+- Assume unit tests passing means everything works — evals test real LLM behavior
+- Merge a PR that has failing CI
+
 **Rules:**
 - Start every new piece of work from a fresh branch off main. Never reuse a branch whose PR has been merged.
-- If your PR is open but not yet merged: wait or ask. Don't push more commits without confirmation.
+- If your PR is open but not yet merged: wait, or ask. Don't push more commits without confirmation.
 
 ## Prompt Design Rules
 
