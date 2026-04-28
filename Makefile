@@ -33,6 +33,9 @@ setup:
 	@uv --version >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
 	@uv sync --all-extras
 
+run:
+	source .venv/bin/activate
+
 test: setup lint test-unit
 
 test-unit: setup
