@@ -37,46 +37,43 @@ make lint           # black --check + ruff check
 
 ## Git Workflow
 
+**After making a PR or at the start of a new session**
+
+1. Decide whether there is outstanding work on the current branch. This may include changes that are not committed, not pushed, not part of a PR, or part of a PR that has not been merged yet, perhaps because it doesn't build or there is some problem with it.
+
 ```bash
-# Start new work
-git checkout main && git pull origin main && git checkout -b <branch>
-
-# Commit and push
-git add -A && git commit -m "message" && git push -u origin <branch>
-
-# Create PR
-gh pr create --base main --head <branch> --title "..."
+# Get PR status and branch name
+gh pr view --json state,headRefName,number --jq '[.state, .headRefName, .number] | @tsv'
+gh pr checks <number>
 ```
 
-**After creating a PR:** Stop. The PR is open. Wait for the user to merge it or tell you what to do next. Do not push more commits unless asked.
+2. If there is outstanding work, encourage the user to complete that work first before continuing.
 
-**When starting fresh (new session, no context about previous work):**
-1. `git checkout main && git pull origin main` — get latest main
-2. `git branch -d <last-branch>` — delete the previous branch (safe: `-d` refuses if it has unmerged work)
-3. `git checkout -b <new-branch>` — create the new branch
+3. Only once the existing work is fully merged to main, start the new work:
 
-**When the user starts talking about more changes and a PR exists:**
+```bash
+# Start new work (only after previous PR is merged)
+git branch -d <last-branch>                 # Safe: -d refuses if unmerged
+git checkout main && git pull origin main && git checkout -b <new-branch>
+```
+If branch -d fails because there are outstanding changes then return to step 2
 
-Check the PR state first, then act:
+**To push changes**
 
-1. `gh pr view --json state,headRefName --jq '[.state, .headRefName] | @tsv'`
-   - If state is **MERGED**: `git checkout main && git pull origin main && git branch -d <branch>` then start fresh.
-   - If state is **OPEN**: ask the user: "This PR is still open. Should I push more commits to the same branch, or would you like to merge it first and start fresh?"
-   - (If `gh pr view` fails with "no PR found", the PR was merged and the branch deleted from origin. Same as MERGED above.)
+1. Run ALL tests locally before pushing:
+   ```bash
+   make test    # Unit tests, fast
+   make evals   # Real API tests, requires API key, ~90s
+   ```
 
-**Before pushing to an existing PR:**
+2. If tests/evals fail locally: fix them before pushing. CI will run them again and fail the same way.
 
-1. Check CI status: `gh pr checks <number>`
-   - If failing: investigate the failure, fix it, THEN push
-   - Don't stack new commits on a broken PR without fixing the breakage
+**When making a PR or pushing to an existing PR**
 
-2. Run ALL tests locally before pushing:
-   - `make test` (unit tests, fast)
-   - `make evals` (real API tests, requires API key, ~90s)
-
-3. If evals fail locally: fix them before pushing. CI will run evals again and fail the same way.
-
-4. After pushing, verify CI passes: `gh pr checks <number> --watch`
+After pushing, verify CI passes:
+   ```bash
+   gh pr checks <number> --watch
+   ```
 
 **Never:**
 - Push changes that break tests (unit or eval) without fixing them first
