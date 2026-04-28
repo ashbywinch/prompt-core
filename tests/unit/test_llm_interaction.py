@@ -9,7 +9,18 @@ that would be difficult to test with real API calls.
 import unittest
 from unittest.mock import patch
 
-from prompt_core.conversation import ConversationOrchestrator, ConversationAction
+from prompt_core.conversation import (
+    ConversationOrchestrator,
+    ConversationAction,
+    Message,
+)
+
+
+class MockRawResponse:
+    """Mock for the raw litellm response object (provides .usage)."""
+
+    def __init__(self):
+        self.usage = None
 
 
 class MockInstructorClient:
@@ -50,6 +61,24 @@ class MockInstructorClient:
 
             # Default mock response
             return ConversationAction(action="continue", message="Test question")
+
+        def create_with_completion(
+            self,
+            model=None,
+            messages=None,
+            response_model=None,
+            max_retries=None,
+            **kwargs,
+        ):
+            """Return (parsed_model, raw_response) tuple like instructor's create_with_completion."""
+            parsed = self.create(
+                model=model,
+                messages=messages,
+                response_model=response_model,
+                max_retries=max_retries,
+                **kwargs,
+            )
+            return parsed, MockRawResponse()
 
 
 class TestLLMInteraction(unittest.TestCase):
@@ -99,8 +128,8 @@ class TestLLMInteraction(unittest.TestCase):
 
         # Add some messages to test they're passed
         self.orchestrator.messages = [
-            {"role": "system", "content": "Test system prompt"},
-            {"role": "user", "content": "Test user message"},
+            Message(role="system", content="Test system prompt"),
+            Message(role="user", content="Test user message"),
         ]
 
         self.orchestrator._call_llm()
@@ -114,7 +143,10 @@ class TestLLMInteraction(unittest.TestCase):
 
         expected_model = config.model
         self.assertEqual(model, expected_model)
-        self.assertEqual(messages, self.orchestrator.messages)
+        self.assertEqual(
+            messages,
+            [m.to_dict() for m in self.orchestrator.messages],
+        )
         self.assertEqual(response_model, ConversationAction)
         self.assertEqual(max_retries, 3)
         self.assertEqual(
@@ -164,17 +196,20 @@ class TestLLMInteraction(unittest.TestCase):
 
         # Simulate conversation history
         self.orchestrator.messages = [
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"},
-            {"role": "user", "content": "Let's create criteria"},
+            Message(role="system", content="You are helpful"),
+            Message(role="user", content="Hello"),
+            Message(role="assistant", content="Hi there"),
+            Message(role="user", content="Let's create criteria"),
         ]
 
         self.orchestrator._call_llm()
 
         # Verify messages parameter includes full history
         _, messages, _, _ = mock_client.last_call_args
-        self.assertEqual(messages, self.orchestrator.messages)
+        self.assertEqual(
+            messages,
+            [m.to_dict() for m in self.orchestrator.messages],
+        )
 
     @patch("prompt_core.llm_interaction.get_client")
     def test_conversation_success_completion(self, mock_get_client):
