@@ -48,12 +48,25 @@ Outstanding work may include: uncommitted changes, unpushed commits, pushed comm
 git status
 
 # Check current branch and recent commits
-git branch --show-current
+BRANCH=$(git branch --show-current)
 git log --oneline -3
 
-# Get PR status and branch name
-gh pr view --json state,headRefName,number --jq '[.state, .headRefName, .number] | @tsv'
-gh pr checks <number> --watch
+# Get default base branch for this repo
+BASE_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+
+# Check whether this branch exists on origin and has pushed commits not yet in base
+git fetch origin
+git ls-remote --exit-code --heads origin "$BRANCH"
+git log --oneline "origin/$BASE_BRANCH..origin/$BRANCH"
+
+# Check whether this branch has an open PR
+gh pr list --head "$BRANCH" --state open --json number,state,url --jq '.[] | [.number, .state, .url] | @tsv'
+
+# If the git log above shows commits but gh pr list prints nothing,
+# changes were pushed to the branch but no PR exists yet.
+
+# If a PR exists for this branch, watch its CI checks
+gh pr checks --watch
 ```
 
 2. If there is outstanding work, encourage the user to complete that work first before continuing. Reuse step 1 whenever necessary to ensure that work is completed and fully merged.
