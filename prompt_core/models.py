@@ -1,5 +1,45 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import List, Optional
+from typing import List, Literal, Optional
+
+
+class ConversationAction(BaseModel):
+    """LLM's decision about conversation flow with discriminator field."""
+
+    action: Literal["continue", "success", "failure"]
+    message: Optional[str] = None
+    criteria: Optional["EvaluationCriteria"] = None
+
+    @model_validator(mode="after")
+    def validate_action_consistency(self):
+        if self.action in ["continue", "failure"] and not self.message:
+            raise ValueError(f"{self.action} action requires message")
+        if self.action == "success" and not self.criteria:
+            raise ValueError("success action requires criteria")
+        return self
+
+
+class ConversationResult(BaseModel):
+    """Result of a conversation turn."""
+
+    criteria: Optional["EvaluationCriteria"] = None
+    message: str
+    is_complete: bool
+
+    @classmethod
+    def continuing(cls, message: str) -> "ConversationResult":
+        return cls(criteria=None, message=message, is_complete=False)
+
+    @classmethod
+    def success(cls, criteria: "EvaluationCriteria") -> "ConversationResult":
+        return cls(
+            criteria=criteria,
+            message="Criteria generated successfully!",
+            is_complete=True,
+        )
+
+    @classmethod
+    def failure(cls, message: str) -> "ConversationResult":
+        return cls(criteria=None, message=f"Failed: {message}", is_complete=True)
 
 
 class Criterion(BaseModel):
@@ -77,3 +117,7 @@ class EvaluationCriteria(BaseModel):
         if total == 0:
             return [0.0] * len(self.criteria)
         return [criterion.weight / total for criterion in self.criteria]
+
+
+ConversationAction.model_rebuild()
+ConversationResult.model_rebuild()

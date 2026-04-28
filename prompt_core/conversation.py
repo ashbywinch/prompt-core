@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, model_validator
+from prompt_core.models import ConversationAction, ConversationResult
 
 
 @dataclass
@@ -24,51 +24,10 @@ class Message:
 class LLMResponse:
     """Wraps a parsed LLM response with metadata."""
 
-    content: ConversationAction  # The parsed ConversationAction
+    content: ConversationAction
     model: str = ""
     usage: dict[str, Any] | None = None
     cost: float | None = None
-
-
-class ConversationAction(BaseModel):
-    """LLM's decision about conversation flow with discriminator field."""
-
-    action: Literal["continue", "success", "failure"]
-    message: Optional[str] = None  # Required for "continue" and "failure" actions
-    criteria: Optional[BaseModel] = None  # Required for "success" action
-
-    @model_validator(mode="after")
-    def validate_action_consistency(self):
-        """Validate that the correct fields are provided based on action."""
-        if self.action in ["continue", "failure"] and not self.message:
-            raise ValueError(f"{self.action} action requires message")
-        if self.action == "success" and not self.criteria:
-            raise ValueError("success action requires criteria")
-        return self
-
-
-class ConversationResult(BaseModel):
-    """Result of a conversation turn."""
-
-    criteria: Optional[BaseModel] = None
-    message: str  # Message to show user
-    is_complete: bool  # True if conversation ended (success or failure)
-
-    @classmethod
-    def continuing(cls, message: str) -> "ConversationResult":
-        return cls(criteria=None, message=message, is_complete=False)
-
-    @classmethod
-    def success(cls, criteria: BaseModel) -> "ConversationResult":
-        return cls(
-            criteria=criteria,
-            message="Criteria generated successfully!",
-            is_complete=True,
-        )
-
-    @classmethod
-    def failure(cls, message: str) -> "ConversationResult":
-        return cls(criteria=None, message=f"Failed: {message}", is_complete=True)
 
 
 class ConversationOrchestrator:
@@ -82,7 +41,6 @@ class ConversationOrchestrator:
         self.max_turns = max_turns
         self.model = config.model
 
-        # System prompt - focus on behavioral guidance, instructor handles schema
         system_prompt = f"""
         You are a helpful assistant that guides users through a structured conversation to produce the specified output.
         You will have a multi-turn conversation (maximum {self.max_turns} turns) to gather information.
@@ -166,27 +124,22 @@ class ConversationOrchestrator:
             - "failure": Raise ValueError with message
         5. Exceptions propagate (fail fast)
         """
-        # Check turn limit
         if self.turn_count >= self.max_turns:
             from .exceptions import TurnLimitExceededError
 
             raise TurnLimitExceededError(self.max_turns)
 
-        # Add user message to history
         if user_input.strip():
             self.messages.append(Message(role="user", content=user_input))
 
         self.turn_count += 1
 
-        # Call LLM - exceptions will propagate
         llm_response = self._call_llm()
         action = llm_response.content
 
-        # Add assistant message to history if needed
         if action.message:
             self.messages.append(Message(role="assistant", content=action.message))
 
-        # Handle action
         if action.action == "continue":
             return ConversationResult.continuing(action.message)
         elif action.action == "success":
@@ -196,7 +149,6 @@ class ConversationOrchestrator:
 
             raise ConversationFailedError(action.message)
         else:
-            # Should not happen due to Literal type
             from .exceptions import InvalidResponseError
 
             raise InvalidResponseError(f"Invalid action received: {action.action}")
@@ -215,7 +167,6 @@ class ConversationOrchestrator:
         try:
             client = get_client(supports_tools=config.model_supports_tools)
 
-            # Use create_with_completion to capture the raw response with usage
             parsed, raw_response = client.chat.completions.create_with_completion(
                 model=self.model,
                 messages=[m.to_dict() for m in self.messages],
@@ -244,7 +195,6 @@ class ConversationOrchestrator:
                 cost=cost,
             )
         except ImportError as e:
-            # If no providers are available, give helpful error
             raise ProviderNotFoundError(
                 f"No LLM providers available. {e}\n"
                 "Install litellm for multi-provider LLM support: uv add litellm"
@@ -276,8 +226,3 @@ class ConversationOrchestrator:
             f"Conversation did not complete after {len(user_inputs)} inputs "
             f"(max_turns={self.max_turns})"
         )
-
-
-# Update forward references
-ConversationAction.model_rebuild()
-ConversationResult.model_rebuild()
