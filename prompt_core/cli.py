@@ -21,6 +21,7 @@ from .exceptions import (
     ProviderNotSupportedError,
     TurnLimitExceededError,
 )
+from .session_logging import log_session
 
 app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
 
@@ -116,45 +117,102 @@ def converse(
             # Process turn
             result = orchestrator.process_turn(user_input)
 
-            # Show assistant response
             typer.echo(f"\nAssistant: {result.message}")
 
-            # Check if we should continue
             if result.is_complete:
                 break
 
-        # Handle result
+        success_judgement = False
+        feedback_text: str | None = None
+
         if result.criteria:
             typer.echo(f"\n✓ Generated {len(result.criteria.criteria)} criteria")
             typer.echo(f"Context: {result.criteria.context}")
 
-            # Display criteria
             for i, criterion in enumerate(result.criteria.criteria, 1):
                 typer.echo(f"\n{i}. {criterion.name} (weight: {criterion.weight})")
                 typer.echo(f"   Description: {criterion.description}")
                 if criterion.ideal_value:
                     typer.echo(f"   Ideal: {criterion.ideal_value}")
 
-            # Save to file if requested
             if output:
                 with open(output, "w") as f:
                     json.dump(result.criteria.model_dump(), f, indent=2)
                 typer.echo(f"\n✓ Saved to {output}")
 
-            # Show normalized weights
             typer.echo("\nNormalized weights (sum to 1.0):")
             normalized = result.criteria.normalized_weights()
             for criterion, weight in zip(result.criteria.criteria, normalized):
                 typer.echo(f"  {criterion.name}: {weight:.3f}")
 
+            success_judgement = typer.confirm(
+                "\nWas this experience successful?", default=True
+            )
+
+            if not success_judgement:
+                feedback_text = typer.prompt("What went wrong? (optional)", default="")
+                if feedback_text == "":
+                    feedback_text = None
+
+            criteria_dict = result.criteria.model_dump() if result.criteria else None
+
         else:
-            # Failure case
             typer.echo("\n✗ Conversation ended without generating criteria")
+            success_judgement = typer.confirm(
+                "\nWas this experience successful?", default=False
+            )
+
+            if not success_judgement:
+                feedback_text = typer.prompt("What went wrong? (optional)", default="")
+                if feedback_text == "":
+                    feedback_text = None
+
+            criteria_dict = None
+
+        try:
+            log_path = log_session(
+                messages=orchestrator.messages,
+                criteria=criteria_dict,
+                success_judgement=success_judgement,
+                feedback_text=feedback_text,
+                model=orchestrator.model,
+                turn_count=orchestrator.turn_count,
+                context=context,
+            )
+            typer.echo(f"\n📝 Session logged to: {log_path}")
+        except Exception as e:
+            typer.secho(f"\n⚠️  Failed to log session: {e}", fg=typer.colors.YELLOW)
+
+        if not result.criteria:
             raise typer.Exit(1)
 
     except KeyboardInterrupt:
         typer.echo("\n\nConversation cancelled.")
         raise typer.Exit(0)
+    except ConversationFailedError as e:
+        typer.secho(
+            f"\n✗ Conversation failed: {e.message}", err=True, fg=typer.colors.RED
+        )
+        success_judgement = typer.confirm(
+            "\nWas this experience successful?", default=False
+        )
+        feedback_text: str | None = None
+        if not success_judgement:
+            feedback_text = typer.prompt("What went wrong? (optional)", default="")
+            if feedback_text == "":
+                feedback_text = None
+
+        log_path = log_session(
+            messages=orchestrator.messages,
+            criteria=None,
+            success_judgement=success_judgement,
+            feedback_text=feedback_text,
+            model=orchestrator.model,
+            turn_count=orchestrator.turn_count,
+            context=context,
+        )
+        typer.echo(f"\n📝 Session logged to: {log_path}")
+        raise typer.Exit(1)
     except Exception as e:
         handle_error(e)
 
