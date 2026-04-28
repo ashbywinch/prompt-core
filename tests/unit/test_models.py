@@ -8,7 +8,11 @@ import unittest
 from pydantic import ValidationError
 
 from prompt_core.models import EvaluationCriteria, Criterion
-from prompt_core.conversation import ConversationAction, ConversationResult
+from prompt_core.conversation import (
+    ConversationAction,
+    ConversationResult,
+    CriteriaRefinementAction,
+)
 from prompt_core.exceptions import (
     CriteriaValidationError,
 )
@@ -305,6 +309,40 @@ class TestConversationResultModel(unittest.TestCase):
         self.assertEqual(result.criteria, self.valid_criteria)
         self.assertEqual(result.message, "Custom message")
         self.assertTrue(result.is_complete)
+
+
+class TestCriteriaRefinementActionModel(unittest.TestCase):
+    """Test refinement action model follows discriminator pattern."""
+
+    def setUp(self):
+        self.valid_criteria = EvaluationCriteria(
+            context="test",
+            criteria=[
+                Criterion(name="budget", description="Budget", weight=8.0),
+                Criterion(name="quality", description="Quality", weight=7.0),
+            ],
+        )
+
+    def test_refinement_action_continue_requires_message(self):
+        action = CriteriaRefinementAction(
+            action="continue", message="What should change?"
+        )
+        self.assertEqual(action.action, "continue")
+        self.assertEqual(action.message, "What should change?")
+        self.assertIsNone(action.criteria)
+
+    def test_refinement_action_success_requires_criteria(self):
+        action = CriteriaRefinementAction(
+            action="success", criteria=self.valid_criteria
+        )
+        self.assertEqual(action.action, "success")
+        self.assertEqual(action.criteria, self.valid_criteria)
+
+    def test_refinement_action_validation_failure_without_message(self):
+        with self.assertRaises(ValueError) as context:
+            CriteriaRefinementAction(action="failure", message=None)
+
+        self.assertIn("failure action requires message", str(context.exception))
 
 
 if __name__ == "__main__":

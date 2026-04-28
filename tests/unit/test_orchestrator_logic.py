@@ -11,6 +11,8 @@ from prompt_core.models import EvaluationCriteria, Criterion
 from prompt_core.conversation import (
     ConversationOrchestrator,
     ConversationAction,
+    CriteriaRefinementOrchestrator,
+    CriteriaRefinementAction,
 )
 from prompt_core.exceptions import (
     ConversationFailedError,
@@ -265,3 +267,104 @@ class TestConversationOrchestratorLogic(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestCriteriaRefinementOrchestratorLogic(unittest.TestCase):
+    """Test refinement orchestrator logic with mocked LLM calls."""
+
+    def setUp(self):
+        self.initial_criteria = EvaluationCriteria(
+            context="test context",
+            criteria=[
+                Criterion(name="budget", description="Budget constraint", weight=8.0),
+                Criterion(name="quality", description="Quality level", weight=7.0),
+            ],
+        )
+
+    def test_refinement_orchestrator_initialization(self):
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=self.initial_criteria, max_turns=4
+        )
+
+        self.assertEqual(orchestrator.turn_count, 0)
+        self.assertEqual(orchestrator.max_turns, 4)
+        self.assertEqual(orchestrator.initial_criteria, self.initial_criteria)
+        self.assertEqual(len(orchestrator.messages), 2)
+        self.assertEqual(orchestrator.messages[0]["role"], "system")
+        self.assertEqual(orchestrator.messages[1]["role"], "user")
+
+    @patch.object(CriteriaRefinementOrchestrator, "_call_llm")
+    def test_refinement_process_turn_continue(self, mock_call_llm):
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=self.initial_criteria
+        )
+        mock_call_llm.return_value = CriteriaRefinementAction(
+            action="continue", message="What would you like to adjust?"
+        )
+
+        result = orchestrator.process_turn("Please make quality more important")
+
+        self.assertFalse(result.is_complete)
+        self.assertEqual(result.message, "What would you like to adjust?")
+        self.assertIsNone(result.criteria)
+        self.assertEqual(orchestrator.turn_count, 1)
+
+    @patch.object(CriteriaRefinementOrchestrator, "_call_llm")
+    def test_refinement_process_turn_success(self, mock_call_llm):
+        updated_criteria = EvaluationCriteria(
+            context="test context",
+            criteria=[
+                Criterion(name="budget", description="Budget constraint", weight=6.0),
+                Criterion(name="quality", description="Quality level", weight=9.0),
+            ],
+        )
+
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=self.initial_criteria
+        )
+        mock_call_llm.return_value = CriteriaRefinementAction(
+            action="success",
+            message="Updated based on your feedback.",
+            criteria=updated_criteria,
+        )
+
+        result = orchestrator.process_turn("Looks good now")
+
+        self.assertTrue(result.is_complete)
+        self.assertEqual(result.criteria, updated_criteria)
+        self.assertEqual(result.message, "Updated based on your feedback.")
+
+    @patch.object(CriteriaRefinementOrchestrator, "_call_llm")
+    def test_refinement_failure_raises_exception(self, mock_call_llm):
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=self.initial_criteria
+        )
+        mock_call_llm.return_value = CriteriaRefinementAction(
+            action="failure",
+            message="I could not understand what should change.",
+        )
+
+        with self.assertRaises(ConversationFailedError) as context:
+            orchestrator.process_turn("Not sure")
+
+        self.assertIn("LLM indicated failure", str(context.exception))
+
+    @patch.object(CriteriaRefinementOrchestrator, "_call_llm")
+    def test_refinement_orchestrator_raises_on_max_turns(self, mock_call_llm):
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=self.initial_criteria, max_turns=2
+        )
+        mock_call_llm.return_value = CriteriaRefinementAction(
+            action="continue", message="Tell me one more detail."
+        )
+
+        result1 = orchestrator.process_turn("First")
+        self.assertFalse(result1.is_complete)
+
+        result2 = orchestrator.process_turn("Second")
+        self.assertFalse(result2.is_complete)
+
+        with self.assertRaises(TurnLimitExceededError) as context:
+            orchestrator.process_turn("Third")
+
+        self.assertIn("Maximum conversation turns (2) reached", str(context.exception))

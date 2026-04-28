@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from .conversation import ConversationOrchestrator
+from .conversation import ConversationOrchestrator, CriteriaRefinementOrchestrator
 from .exceptions import (
     APIKeyError,
     ConfigFileError,
@@ -21,9 +21,28 @@ from .exceptions import (
     ProviderNotSupportedError,
     TurnLimitExceededError,
 )
+from .models import EvaluationCriteria
 from .session_logging import log_session
 
 app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
+
+
+def print_criteria(criteria: EvaluationCriteria, title: str) -> None:
+    """Render criteria in a consistent CLI format."""
+    typer.echo(f"\n{title}")
+    typer.echo(f"✓ Generated {len(criteria.criteria)} criteria")
+    typer.echo(f"Context: {criteria.context}")
+
+    for i, criterion in enumerate(criteria.criteria, 1):
+        typer.echo(f"\n{i}. {criterion.name} (weight: {criterion.weight})")
+        typer.echo(f"   Description: {criterion.description}")
+        if criterion.ideal_value:
+            typer.echo(f"   Ideal: {criterion.ideal_value}")
+
+    typer.echo("\nNormalized weights (sum to 1.0):")
+    normalized = criteria.normalized_weights()
+    for criterion, weight in zip(criteria.criteria, normalized):
+        typer.echo(f"  {criterion.name}: {weight:.3f}")
 
 
 def handle_error(error: Exception):
@@ -93,6 +112,8 @@ def converse(
     prompt-core converse --context "birthday presents for child"
     """
     typer.echo(f"Starting conversation... (Ctrl+C to quit, max {max_turns} turns)")
+    orchestrator: ConversationOrchestrator | None = None
+    refinement_orchestrator: CriteriaRefinementOrchestrator | None = None
 
     try:
         orchestrator = ConversationOrchestrator(
@@ -125,25 +146,38 @@ def converse(
         success_judgement = False
         feedback_text: str | None = None
 
-        if result.criteria:
-            typer.echo(f"\n✓ Generated {len(result.criteria.criteria)} criteria")
-            typer.echo(f"Context: {result.criteria.context}")
+        all_messages = list(orchestrator.messages)
 
-            for i, criterion in enumerate(result.criteria.criteria, 1):
-                typer.echo(f"\n{i}. {criterion.name} (weight: {criterion.weight})")
-                typer.echo(f"   Description: {criterion.description}")
-                if criterion.ideal_value:
-                    typer.echo(f"   Ideal: {criterion.ideal_value}")
+        if result.criteria:
+            print_criteria(result.criteria, title="Initial criteria:")
+
+            typer.echo(
+                "\nAssistant: What do you think about these criteria? We can keep them or update them."
+            )
+            refinement_orchestrator = CriteriaRefinementOrchestrator(
+                initial_criteria=result.criteria, max_turns=max_turns
+            )
+
+            refinement_result = refinement_orchestrator.process_turn(
+                typer.prompt("\nYou")
+            )
+            typer.echo(f"\nAssistant: {refinement_result.message}")
+
+            while not refinement_result.is_complete:
+                refinement_result = refinement_orchestrator.process_turn(
+                    typer.prompt("\nYou")
+                )
+                typer.echo(f"\nAssistant: {refinement_result.message}")
+
+            result = refinement_result
+            all_messages.extend(refinement_orchestrator.messages)
+
+            print_criteria(result.criteria, title="Final criteria:")
 
             if output:
                 with open(output, "w") as f:
                     json.dump(result.criteria.model_dump(), f, indent=2)
                 typer.echo(f"\n✓ Saved to {output}")
-
-            typer.echo("\nNormalized weights (sum to 1.0):")
-            normalized = result.criteria.normalized_weights()
-            for criterion, weight in zip(result.criteria.criteria, normalized):
-                typer.echo(f"  {criterion.name}: {weight:.3f}")
 
             success_judgement = typer.confirm(
                 "\nWas this experience successful?", default=True
@@ -171,12 +205,12 @@ def converse(
 
         try:
             log_path = log_session(
-                messages=orchestrator.messages,
+                messages=all_messages,
                 criteria=criteria_dict,
                 success_judgement=success_judgement,
                 feedback_text=feedback_text,
                 model=orchestrator.model,
-                turn_count=orchestrator.turn_count,
+                turn_count=len([m for m in all_messages if m["role"] == "user"]),
                 context=context,
             )
             typer.echo(f"\n📝 Session logged to: {log_path}")
@@ -202,13 +236,55 @@ def converse(
             if feedback_text == "":
                 feedback_text = None
 
+        combined_messages: list[dict[str, str]] = []
+        model = "unknown"
+        turn_count = 0
+
+        if orchestrator is not None:
+            combined_messages.extend(orchestrator.messages)
+            model = orchestrator.model
+            turn_count += orchestrator.turn_count
+
+        if refinement_orchestrator is not None:
+            combined_messages.extend(refinement_orchestrator.messages)
+            model = refinement_orchestrator.model
+            turn_count += refinement_orchestrator.turn_count
+
         log_path = log_session(
-            messages=orchestrator.messages,
+            messages=combined_messages,
             criteria=None,
             success_judgement=success_judgement,
             feedback_text=feedback_text,
-            model=orchestrator.model,
-            turn_count=orchestrator.turn_count,
+            model=model,
+            turn_count=turn_count,
+            context=context,
+        )
+        typer.echo(f"\n📝 Session logged to: {log_path}")
+        raise typer.Exit(1)
+    except TurnLimitExceededError as e:
+        typer.secho(f"\n✗ {e.message}", err=True, fg=typer.colors.RED)
+
+        combined_messages: list[dict[str, str]] = []
+        model = "unknown"
+        turn_count = 0
+
+        if orchestrator is not None:
+            combined_messages.extend(orchestrator.messages)
+            model = orchestrator.model
+            turn_count += orchestrator.turn_count
+
+        if refinement_orchestrator is not None:
+            combined_messages.extend(refinement_orchestrator.messages)
+            model = refinement_orchestrator.model
+            turn_count += refinement_orchestrator.turn_count
+
+        log_path = log_session(
+            messages=combined_messages,
+            criteria=None,
+            success_judgement=False,
+            feedback_text="Turn limit reached",
+            model=model,
+            turn_count=turn_count,
             context=context,
         )
         typer.echo(f"\n📝 Session logged to: {log_path}")

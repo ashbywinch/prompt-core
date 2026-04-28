@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Literal, Optional
 
 from pydantic import BaseModel, model_validator
@@ -45,6 +46,122 @@ class ConversationResult(BaseModel):
     @classmethod
     def failure(cls, message: str) -> "ConversationResult":
         return cls(criteria=None, message=f"Failed: {message}", is_complete=True)
+
+
+class CriteriaRefinementAction(BaseModel):
+    """LLM decision model for post-generation criteria refinement chat."""
+
+    action: Literal["continue", "success", "failure"]
+    message: Optional[str] = None
+    criteria: Optional["EvaluationCriteria"] = None
+
+    @model_validator(mode="after")
+    def validate_action_consistency(self):
+        if self.action in ["continue", "failure"] and not self.message:
+            raise ValueError(f"{self.action} action requires message")
+        if self.action == "success" and not self.criteria:
+            raise ValueError("success action requires criteria")
+        return self
+
+
+class CriteriaRefinementOrchestrator:
+    """Mini-conversation orchestrator that refines an existing EvaluationCriteria."""
+
+    def __init__(self, initial_criteria: EvaluationCriteria, max_turns: int = 5):
+        from .config import config
+
+        self.initial_criteria = initial_criteria
+        self.messages = []
+        self.turn_count = 0
+        self.max_turns = max_turns
+        self.model = config.model
+
+        criteria_json = json.dumps(initial_criteria.model_dump(), indent=2)
+        system_prompt = f"""
+        You are a helpful assistant running a refinement conversation for existing evaluation criteria.
+        You will have a multi-turn conversation (maximum {self.max_turns} turns) with the user.
+
+        YOUR ROLE:
+        - Discuss the current criteria with the user
+        - Understand whether they want to keep the criteria as-is or update them
+        - Ask one question at a time if their requested changes are unclear
+        - End with a final criteria object when the user is satisfied
+
+        RESPONSE ACTIONS:
+        - action="continue": ask follow-up question or summarize what you're changing next
+        - action="success": return the final criteria object (either unchanged or updated)
+        - action="failure": use only if the user refuses to engage and no usable final criteria can be produced
+
+        IMPORTANT:
+        - Conversation limit: {self.max_turns} turns total
+        - Base the final criteria only on user-provided feedback
+        - Preserve the same context unless user asks to change it
+        - Final criteria MUST include a criterion named exactly "budget" (case-insensitive)
+        """
+
+        self.messages.append({"role": "system", "content": system_prompt})
+        self.messages.append(
+            {
+                "role": "user",
+                "content": (
+                    "Here is the current criteria to review:\n"
+                    f"{criteria_json}\n"
+                    "Please discuss updates with me and return final criteria when ready."
+                ),
+            }
+        )
+
+    def process_turn(self, user_input: str) -> ConversationResult:
+        if self.turn_count >= self.max_turns:
+            from .exceptions import TurnLimitExceededError
+
+            raise TurnLimitExceededError(self.max_turns)
+
+        if user_input.strip():
+            self.messages.append({"role": "user", "content": user_input})
+
+        self.turn_count += 1
+        action = self._call_llm()
+
+        if action.message:
+            self.messages.append({"role": "assistant", "content": action.message})
+
+        if action.action == "continue":
+            return ConversationResult.continuing(action.message)
+        if action.action == "success":
+            return ConversationResult(
+                criteria=action.criteria,
+                message=action.message or "Criteria finalized successfully!",
+                is_complete=True,
+            )
+        if action.action == "failure":
+            from .exceptions import ConversationFailedError
+
+            raise ConversationFailedError(action.message)
+
+        from .exceptions import InvalidResponseError
+
+        raise InvalidResponseError(f"Invalid action received: {action.action}")
+
+    def _call_llm(self) -> CriteriaRefinementAction:
+        from .config import config
+        from .exceptions import ProviderNotFoundError
+        from .llm_interaction import get_client
+
+        try:
+            client = get_client(supports_tools=config.model_supports_tools)
+            return client.chat.completions.create(
+                model=self.model,
+                messages=self.messages,
+                response_model=CriteriaRefinementAction,
+                max_retries=config.max_retries,
+                timeout=config.request_timeout_seconds,
+            )
+        except ImportError as e:
+            raise ProviderNotFoundError(
+                f"No LLM providers available. {e}\n"
+                "Install litellm for multi-provider LLM support: uv add litellm"
+            )
 
 
 class ConversationOrchestrator:
@@ -202,3 +319,4 @@ class ConversationOrchestrator:
 # Update forward references
 ConversationAction.model_rebuild()
 ConversationResult.model_rebuild()
+CriteriaRefinementAction.model_rebuild()

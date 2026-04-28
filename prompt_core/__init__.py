@@ -4,6 +4,8 @@ from .conversation import (
     ConversationOrchestrator,
     ConversationAction,
     ConversationResult,
+    CriteriaRefinementAction,
+    CriteriaRefinementOrchestrator,
 )
 
 __all__ = [
@@ -13,4 +15,6 @@ __all__ = [
     "ConversationOrchestrator",
     "ConversationAction",
     "ConversationResult",
+    "CriteriaRefinementAction",
+    "CriteriaRefinementOrchestrator",
 ]

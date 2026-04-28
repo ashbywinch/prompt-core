@@ -9,7 +9,11 @@ Run with: make evals
 import unittest
 
 from prompt_core.models import EvaluationCriteria
-from prompt_core.conversation import ConversationOrchestrator, ConversationResult
+from prompt_core.conversation import (
+    ConversationOrchestrator,
+    ConversationResult,
+    CriteriaRefinementOrchestrator,
+)
 
 
 class TestRealAPI(unittest.TestCase):
@@ -234,6 +238,55 @@ class TestRealAPI(unittest.TestCase):
 
         # Should get a valid response (not crash due to format errors)
         self.assertIsInstance(result, ConversationResult)
+
+    def test_refinement_conversation_with_real_llm(self):
+        """Test real-API refinement mini-conversation returns final criteria."""
+        initial_criteria = EvaluationCriteria(
+            context="choosing a laptop",
+            criteria=[
+                {
+                    "name": "budget",
+                    "description": "Total purchase and setup cost",
+                    "weight": 8.0,
+                },
+                {
+                    "name": "performance",
+                    "description": "Ability to run development workloads",
+                    "weight": 7.0,
+                },
+            ],
+        )
+
+        orchestrator = CriteriaRefinementOrchestrator(
+            initial_criteria=initial_criteria,
+            max_turns=5,
+        )
+
+        user_inputs = [
+            "Please keep these criteria but increase performance slightly.",
+            "If you need clarification, keep budget important and increase performance importance.",
+            "Looks good. Finalize now.",
+            "No further changes. Return the final criteria.",
+        ]
+
+        result = None
+        for user_input in user_inputs:
+            result = orchestrator.process_turn(user_input)
+            if result.is_complete:
+                break
+
+        self.assertIsNotNone(result)
+        self.assertTrue(
+            result.is_complete,
+            "Refinement conversation should complete within max_turns",
+        )
+        self.assertIsNotNone(result.criteria)
+        self.assertIsInstance(result.criteria, EvaluationCriteria)
+        self.assertGreaterEqual(len(result.criteria.criteria), 2)
+        self.assertTrue(
+            any(c.name.lower() == "budget" for c in result.criteria.criteria),
+            "Final criteria should include 'budget'",
+        )
 
 
 if __name__ == "__main__":
