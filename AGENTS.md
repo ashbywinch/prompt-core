@@ -28,6 +28,7 @@ Generates structured `EvaluationCriteria` objects via multi-turn LLM conversatio
 ## Commands
 
 ```bash
+make                # Set up python venv for development
 make test          # Unit tests only (no API key needed, ~0.01s)
 make test-verbose  # Same with verbose output per test
 make evals          # Real-API evals (requires config.json + API key, ~90s)
@@ -39,15 +40,23 @@ make lint           # black --check + ruff check
 
 **After making a PR or at the start of a new session**
 
-1. Decide whether there is outstanding work on the current branch. This may include changes that are not committed, not pushed, not part of a PR, or part of a PR that has not been merged yet, perhaps because it doesn't build or there is some problem with it.
+1. Check for outstanding work on the current branch
+Outstanding work may include: uncommitted changes, unpushed commits, pushed commits that are not in a PR yet, or a PR that hasn't merged (perhaps due to failing CI).
 
 ```bash
+# Check for uncommitted changes
+git status
+
+# Check current branch and recent commits
+git branch --show-current
+git log --oneline -3
+
 # Get PR status and branch name
 gh pr view --json state,headRefName,number --jq '[.state, .headRefName, .number] | @tsv'
-gh pr checks <number>
+gh pr checks <number> --watch
 ```
 
-2. If there is outstanding work, encourage the user to complete that work first before continuing.
+2. If there is outstanding work, encourage the user to complete that work first before continuing. Reuse step 1 whenever necessary to ensure that work is completed and fully merged.
 
 3. Only once the existing work is fully merged to main, start the new work:
 
@@ -68,21 +77,15 @@ If branch -d fails because there are outstanding changes then return to step 2
 
 2. If tests/evals fail locally: fix them before pushing. CI will run them again and fail the same way.
 
-**When making a PR or pushing to an existing PR**
-
-After pushing, verify CI passes:
+3. Stage, commit, push, and then:
    ```bash
    gh pr checks <number> --watch
    ```
 
-**Never:**
-- Push changes that break tests (unit or eval) without fixing them first
-- Assume unit tests passing means everything works — evals test real LLM behavior
-- Merge a PR that has failing CI
-
 **Rules:**
 - Start every new piece of work from a fresh branch off main. Never reuse a branch whose PR has been merged.
 - If your PR is open but not yet merged: wait, or ask. Don't push more commits without confirmation.
+
 
 ## Prompt Design Rules
 
