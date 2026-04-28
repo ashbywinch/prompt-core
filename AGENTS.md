@@ -28,12 +28,77 @@ Generates structured `EvaluationCriteria` objects via multi-turn LLM conversatio
 ## Commands
 
 ```bash
+make                # Set up python venv for development
 make test          # Unit tests only (no API key needed, ~0.01s)
 make test-verbose  # Same with verbose output per test
 make evals          # Real-API evals (requires config.json + API key, ~90s)
 make evals-verbose  # Same with verbose output
 make lint           # black --check + ruff check
 ```
+
+## Git Workflow
+
+**After making a PR or at the start of a new session**
+
+1. Check for outstanding work on the current branch
+Outstanding work may include: uncommitted changes, unpushed commits, pushed commits that are not in a PR yet, or a PR that hasn't merged (perhaps due to failing CI).
+
+```bash
+# Check for uncommitted changes
+git status
+
+# Check current branch and recent commits
+BRANCH=$(git branch --show-current)
+git log --oneline -3
+
+# Get default base branch for this repo
+BASE_BRANCH=$(gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name')
+
+# Check whether this branch exists on origin and has pushed commits not yet in base
+git fetch origin
+git ls-remote --exit-code --heads origin "$BRANCH"
+git log --oneline "origin/$BASE_BRANCH..origin/$BRANCH"
+
+# Check whether this branch has an open PR
+gh pr list --head "$BRANCH" --state open --json number,state,url --jq '.[] | [.number, .state, .url] | @tsv'
+
+# If the git log above shows commits but gh pr list prints nothing,
+# changes were pushed to the branch but no PR exists yet.
+
+# If a PR exists for this branch, watch its CI checks
+gh pr checks --watch
+```
+
+2. If there is outstanding work, encourage the user to complete that work first before continuing. Reuse step 1 whenever necessary to ensure that work is completed and fully merged.
+
+3. Only once the existing work is fully merged to main, start the new work:
+
+```bash
+# Start new work (only after previous PR is merged)
+git branch -d <last-branch>                 # Safe: -d refuses if unmerged
+git checkout main && git pull origin main && git checkout -b <new-branch>
+```
+If branch -d fails because there are outstanding changes then return to step 2
+
+**To push changes**
+
+1. Run ALL tests locally before pushing:
+   ```bash
+   make test    # Unit tests, fast
+   make evals   # Real API tests, requires API key, ~90s
+   ```
+
+2. If tests/evals fail locally: fix them before pushing. CI will run them again and fail the same way.
+
+3. Stage, commit, push, and then:
+   ```bash
+   gh pr checks <number> --watch
+   ```
+
+**Rules:**
+- Start every new piece of work from a fresh branch off main. Never reuse a branch whose PR has been merged.
+- If your PR is open but not yet merged: wait, or ask. Don't push more commits without confirmation.
+
 
 ## Prompt Design Rules
 
