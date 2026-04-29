@@ -9,7 +9,11 @@ from typing import Optional
 
 import typer
 
-from .conversation import ConversationOrchestrator, CriteriaRefinementOrchestrator
+from .conversation_flows import (
+    ConversationFlowState,
+    ConversationIO,
+    run_reviewed_criteria_conversation,
+)
 from .exceptions import (
     APIKeyError,
     ConfigFileError,
@@ -25,6 +29,16 @@ from .models import EvaluationCriteria
 from .session_logging import log_session
 
 app = typer.Typer(help="Generate and work with evaluation criteria using LLMs")
+
+
+class TyperConversationIO(ConversationIO):
+    """Typer-backed I/O adapter for conversation flow functions."""
+
+    def echo(self, message: str) -> None:
+        typer.echo(message)
+
+    def prompt(self, label: str) -> str:
+        return typer.prompt(label)
 
 
 def print_criteria(criteria: EvaluationCriteria, title: str) -> None:
@@ -112,67 +126,38 @@ def converse(
     prompt-core converse --context "birthday presents for child"
     """
     typer.echo(f"Starting conversation... (Ctrl+C to quit, max {max_turns} turns)")
-    orchestrator: ConversationOrchestrator | None = None
-    refinement_orchestrator: CriteriaRefinementOrchestrator | None = None
+    io = TyperConversationIO()
+    flow_state = ConversationFlowState()
 
     try:
-        orchestrator = ConversationOrchestrator(
-            initial_context=context, max_turns=max_turns
-        )
-
-        # Start conversation
         if context:
             typer.echo(f"Context: {context}")
-            result = orchestrator.process_turn("Let's begin.")
-        else:
-            result = orchestrator.process_turn("")
 
-        # Show initial response
-        typer.echo(f"\nAssistant: {result.message}")
+        result = run_reviewed_criteria_conversation(
+            context=context,
+            max_turns=max_turns,
+            io=io,
+            state=flow_state,
+        )
 
-        # Interactive loop
-        while not result.is_complete:
-            # Get user input
-            user_input = typer.prompt("\nYou")
-
-            # Process turn
-            result = orchestrator.process_turn(user_input)
-
-            typer.echo(f"\nAssistant: {result.message}")
-
-            if result.is_complete:
-                break
+        initial_result = flow_state.initial_result
+        refinement_result = (
+            flow_state.final_result
+            if flow_state.initial_result
+            and flow_state.final_result
+            and flow_state.initial_result.criteria
+            else None
+        )
 
         success_judgement = False
         feedback_text: str | None = None
 
-        all_messages = list(orchestrator.messages)
+        if initial_result and initial_result.criteria:
+            print_criteria(initial_result.criteria, title="Initial criteria:")
 
         if result.criteria:
-            print_criteria(result.criteria, title="Initial criteria:")
-
-            typer.echo(
-                "\nAssistant: What do you think about these criteria? We can keep them or update them."
-            )
-            refinement_orchestrator = CriteriaRefinementOrchestrator(
-                initial_criteria=result.criteria, max_turns=max_turns
-            )
-
-            refinement_result = refinement_orchestrator.process_turn(
-                typer.prompt("\nYou")
-            )
-            typer.echo(f"\nAssistant: {refinement_result.message}")
-
-            while not refinement_result.is_complete:
-                refinement_result = refinement_orchestrator.process_turn(
-                    typer.prompt("\nYou")
-                )
-                typer.echo(f"\nAssistant: {refinement_result.message}")
-
-            result = refinement_result
-            all_messages.extend(refinement_orchestrator.messages)
-
-            print_criteria(result.criteria, title="Final criteria:")
+            if refinement_result and refinement_result.criteria:
+                print_criteria(result.criteria, title="Final criteria:")
 
             if output:
                 with open(output, "w") as f:
@@ -205,12 +190,12 @@ def converse(
 
         try:
             log_path = log_session(
-                messages=all_messages,
+                messages=flow_state.messages,
                 criteria=criteria_dict,
                 success_judgement=success_judgement,
                 feedback_text=feedback_text,
-                model=orchestrator.model,
-                turn_count=len([m for m in all_messages if m["role"] == "user"]),
+                model=flow_state.model,
+                turn_count=flow_state.turn_count,
                 context=context,
             )
             typer.echo(f"\n📝 Session logged to: {log_path}")
@@ -236,27 +221,13 @@ def converse(
             if feedback_text == "":
                 feedback_text = None
 
-        combined_messages: list[dict[str, str]] = []
-        model = "unknown"
-        turn_count = 0
-
-        if orchestrator is not None:
-            combined_messages.extend(orchestrator.messages)
-            model = orchestrator.model
-            turn_count += orchestrator.turn_count
-
-        if refinement_orchestrator is not None:
-            combined_messages.extend(refinement_orchestrator.messages)
-            model = refinement_orchestrator.model
-            turn_count += refinement_orchestrator.turn_count
-
         log_path = log_session(
-            messages=combined_messages,
+            messages=flow_state.messages,
             criteria=None,
             success_judgement=success_judgement,
             feedback_text=feedback_text,
-            model=model,
-            turn_count=turn_count,
+            model=flow_state.model,
+            turn_count=flow_state.turn_count,
             context=context,
         )
         typer.echo(f"\n📝 Session logged to: {log_path}")
@@ -264,27 +235,13 @@ def converse(
     except TurnLimitExceededError as e:
         typer.secho(f"\n✗ {e.message}", err=True, fg=typer.colors.RED)
 
-        combined_messages: list[dict[str, str]] = []
-        model = "unknown"
-        turn_count = 0
-
-        if orchestrator is not None:
-            combined_messages.extend(orchestrator.messages)
-            model = orchestrator.model
-            turn_count += orchestrator.turn_count
-
-        if refinement_orchestrator is not None:
-            combined_messages.extend(refinement_orchestrator.messages)
-            model = refinement_orchestrator.model
-            turn_count += refinement_orchestrator.turn_count
-
         log_path = log_session(
-            messages=combined_messages,
+            messages=flow_state.messages,
             criteria=None,
             success_judgement=False,
             feedback_text="Turn limit reached",
-            model=model,
-            turn_count=turn_count,
+            model=flow_state.model,
+            turn_count=flow_state.turn_count,
             context=context,
         )
         typer.echo(f"\n📝 Session logged to: {log_path}")
